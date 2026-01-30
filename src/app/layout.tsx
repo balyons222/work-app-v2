@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+// 1. CHANGE THIS LINE: Import Montserrat instead of Inter
+import { Montserrat } from "next/font/google"; 
 import "./globals.css";
-import Navbar from "@/src/components/Navbar";
-import Footer from "@/src/components/Footer";
+import Navbar from "@/components/Navbar"; // (Adjust path if needed)
+import Footer from "@/components/Footer"; // (Adjust path if needed)
 import { Toaster } from 'react-hot-toast';
 
-const inter = Inter({ subsets: ["latin"] });
+// 2. CHANGE THIS LINE: Configure the new font
+const font = Montserrat({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Gig Marketplace",
-  description: "Find your next gig",
+  title: "FxD Events",
+  description: "F x D = WORK",
 };
 
 export default function RootLayout({
@@ -19,24 +21,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-        <script src="https://cdn.tailwindcss.com"></script>
-      </head>
-      {/* 2. Add flex classes to body so footer stays at bottom */}
-      <body className={`${inter.className} flex flex-col min-h-screen`}>
-       
-       <Toaster position="bottom-right" />
-
+      {/* 3. CHANGE THIS LINE: Apply the font class to the body */}
+      <body className={font.className}>
         <Navbar />
-        
-        {/* Main content grows to fill space */}
-        <main className="flex-grow">
-          {children}
-        </main>
-        
-        {/* 3. Add Footer here */}
+        {children}
         <Footer />
-  
+        <Toaster position="bottom-right" />
       </body>
     </html>
   );

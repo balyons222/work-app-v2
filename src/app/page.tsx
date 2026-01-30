@@ -9,7 +9,7 @@ export default function Home() {
         <div className="mx-auto max-w-2xl py-32 sm:py-48 lg:py-56">
           <div className="text-center">
             <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-6xl">
-              Micro-jobs for <span className="text-blue-600">everyone.</span>
+              Micro-jobs for <span className="text-secondary">everyone.</span>
             </h1>
             <p className="mt-6 text-lg leading-8 text-gray-600">
               The easiest way to get tasks done or earn extra cash. 
@@ -43,7 +43,7 @@ export default function Home() {
       <div className="bg-gray-50 py-24 sm:py-32">
         <div className="mx-auto max-w-7xl px-6 lg:px-8">
           <div className="mx-auto max-w-2xl lg:text-center">
-            <h2 className="text-base font-semibold leading-7 text-blue-600">Work Faster</h2>
+            <h2 className="text-base font-semibold leading-7 text-secondary">Work Faster</h2>
             <p className="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
               Everything you need to get started
             </p>

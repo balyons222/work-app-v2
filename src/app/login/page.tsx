@@ -64,7 +64,7 @@ export default function LoginPage() {
           Or{' '}
           <button 
             onClick={() => setIsSignUp(!isSignUp)} 
-            className="font-medium text-blue-600 hover:text-blue-500 hover:underline"
+            className="font-medium text-secondary hover:text-teal-500 hover:underline"
           >
             {isSignUp ? 'log in instead' : 'create a new account'}
           </button>
