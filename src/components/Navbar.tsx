@@ -42,14 +42,14 @@ export default function Navbar() {
           {/* Logo Section */}
           <div className="flex-shrink-0 flex items-center">
             <Link href="/">
-              <Image 
-                src="/fxd-logo.png" 
-                alt="FxD Events" 
-                width={150} 
-                height={50} 
-                className="h-12 w-auto object-contain" // Ensures logo fits nicely
-                priority
-              />
+<Image 
+  src="/fxd-v2.png"
+  alt="FxD Events" 
+  width={150} 
+  height={50} 
+  className="h-12 w-auto object-contain"
+  priority
+/>
             </Link>
           </div>
           
