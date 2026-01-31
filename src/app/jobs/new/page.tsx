@@ -10,7 +10,6 @@ export default async function NewJobPage() {
     redirect('/login')
   }
 
-  // Check if profile is complete and if they are an organizer
   const { data: profile } = await supabase
     .from('profiles')
     .select('full_name, role')
@@ -19,12 +18,6 @@ export default async function NewJobPage() {
 
   if (!profile?.full_name) {
     redirect('/setup-profile')
-  }
-
-  // Optional: Only let "Organizers" post jobs
-  if (profile.role !== 'organizer') {
-    // We can redirect them to search if they are a contractor trying to post
-    redirect('/search')
   }
 
   return <JobPostForm />
