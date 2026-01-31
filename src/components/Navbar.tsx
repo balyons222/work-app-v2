@@ -56,6 +56,9 @@ export default function Navbar() {
             <Link href="/search" className="text-primary hover:text-secondary font-semibold transition-colors">
               Find Talent
             </Link>
+            <Link href="/jobs" className="text-primary hover:text-secondary font-semibold transition-colors">
+  Find Work
+</Link>
             <Link href="/jobs/new" className="text-primary hover:text-secondary font-semibold transition-colors">
               Post a Job
             </Link>
@@ -102,6 +105,7 @@ export default function Navbar() {
       {isOpen && (
         <div className="md:hidden bg-white border-t border-slate-100 px-4 py-4 space-y-4">
           <Link href="/search" className="block text-primary font-medium">Find Talent</Link>
+          <Link href="/jobs" className="block text-primary font-medium">Find Work</Link>
           <Link href="/jobs/new" className="block text-primary font-medium">Post a Job</Link>
           <hr />
           {user ? (
