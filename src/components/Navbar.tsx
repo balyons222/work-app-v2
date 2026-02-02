@@ -3,24 +3,43 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation' // Added usePathname
 import { createClient } from '../utils/supabase/client'
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
   const [user, setUser] = useState<any>(null)
+  const [profile, setProfile] = useState<any>(null)
   const router = useRouter()
+  const pathname = usePathname() // Detect current page
   const supabase = createClient()
 
+  const isHome = pathname === '/'
+
   useEffect(() => {
-    const getUser = async () => {
+    const getAuthAndProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user)
+      
+      if (user) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('full_name, role, avatar_url')
+          .eq('id', user.id)
+          .single()
+        setProfile(profileData)
+      }
     }
-    getUser()
+
+    getAuthAndProfile()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
+      if (session?.user) {
+        getAuthAndProfile()
+      } else {
+        setProfile(null)
+      }
     })
 
     return () => subscription.unsubscribe()
@@ -28,16 +47,24 @@ export default function Navbar() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
+    setIsOpen(false)
     router.push('/')
     router.refresh()
   }
 
+  const getInitials = (name: string) => {
+    return name ? name.charAt(0).toUpperCase() : 'U'
+  }
+
+  // Define dynamic classes based on whether we are on the homepage
+  const navBg = isHome ? 'bg-transparent border-transparent' : 'bg-white border-slate-200'
+  const textColor = isHome ? 'text-white' : 'text-primary'
+
   return (
-    <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
+    <nav className={`${navBg} border-b sticky top-0 z-50 transition-all duration-300`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-20">
           
-          {/* Logo */}
           <div className="flex-shrink-0 flex items-center">
             <Link href="/">
               <Image 
@@ -45,54 +72,52 @@ export default function Navbar() {
                 alt="FxD Events" 
                 width={150} 
                 height={50} 
-                className="h-12 w-auto object-contain"
-                priority
+                className={`h-12 w-auto object-contain ${isHome ? 'brightness-0 invert' : ''}`} 
+                priority 
               />
             </Link>
           </div>
           
-          {/* Desktop Menu */}
           <div className="hidden md:flex items-center space-x-8">
-            <Link href="/search" className="text-primary hover:text-secondary font-semibold transition-colors">
-              Find Talent
-            </Link>
-            <Link href="/jobs" className="text-primary hover:text-secondary font-semibold transition-colors">
-  Find Work
-</Link>
-            <Link href="/jobs/new" className="text-primary hover:text-secondary font-semibold transition-colors">
-              Post a Job
-            </Link>
+            <Link href="/search" className={`${textColor} hover:text-secondary font-semibold transition-colors`}>Find Talent</Link>
+            <Link href="/jobs" className={`${textColor} hover:text-secondary font-semibold transition-colors`}>Find Work</Link>
             
             {user ? (
-              <>
-                <Link href="/messages" className="text-primary hover:text-secondary font-semibold transition-colors">
-                  Messages
+              <div className="flex items-center gap-4 pl-4 border-l border-slate-200/30">
+                <div className="text-right hidden lg:block">
+                  <p className={`text-sm font-bold ${textColor} leading-none`}>{profile?.full_name || 'Member'}</p>
+                  <Link href="/setup-profile" className="text-[10px] text-secondary font-bold uppercase hover:underline">
+                    Edit Profile
+                  </Link>
+                </div>
+                
+                <Link href="/dashboard" className="h-10 w-10 rounded-full bg-slate-100/10 border border-slate-200/20 flex items-center justify-center overflow-hidden hover:ring-2 hover:ring-secondary transition-all">
+                  {profile?.avatar_url ? (
+                    <img src={profile.avatar_url} alt="Profile" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className={`${textColor} font-bold`}>{getInitials(profile?.full_name)}</span>
+                  )}
                 </Link>
+
                 <button 
                   onClick={handleSignOut}
-                  className="bg-secondary hover:bg-teal-600 text-white px-5 py-2.5 rounded-lg font-bold transition-all shadow-sm"
+                  className="bg-secondary hover:bg-teal-600 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-lg"
                 >
                   Sign Out
                 </button>
-              </>
+              </div>
             ) : (
-              <>
-                <Link href="/login" className="text-primary hover:text-secondary font-semibold transition-colors">
-                  Log In
+              <div className="flex items-center space-x-4">
+                <Link href="/login" className={`${textColor} hover:text-secondary font-semibold`}>Log In</Link>
+                <Link href="/login?mode=signup" className="bg-primary text-white px-5 py-2.5 rounded-lg font-bold shadow-lg hover:bg-slate-800 transition-all">
+                  Join
                 </Link>
-                <Link href="/login" className="bg-primary hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg font-bold transition-all shadow-sm">
-                  Sign Up
-                </Link>
-              </>
+              </div>
             )}
           </div>
-          
-          {/* Mobile Menu Button */}
+
           <div className="flex items-center md:hidden">
-            <button
-              onClick={() => setIsOpen(!isOpen)}
-              className="p-2 rounded-md text-primary"
-            >
+            <button onClick={() => setIsOpen(!isOpen)} className={`p-2 ${textColor}`}>
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
               </svg>
@@ -103,15 +128,30 @@ export default function Navbar() {
 
       {/* Mobile Menu */}
       {isOpen && (
-        <div className="md:hidden bg-white border-t border-slate-100 px-4 py-4 space-y-4">
-          <Link href="/search" className="block text-primary font-medium">Find Talent</Link>
-          <Link href="/jobs" className="block text-primary font-medium">Find Work</Link>
-          <Link href="/jobs/new" className="block text-primary font-medium">Post a Job</Link>
-          <hr />
+        <div className={`md:hidden ${isHome ? 'bg-[#0B0E2A]' : 'bg-white'} border-t border-slate-100/10 px-4 py-6 space-y-4 shadow-inner`}>
+          {user && (
+            <div className="flex items-center gap-3 pb-4 border-b border-slate-100/10">
+               <div className="h-12 w-12 rounded-full bg-slate-100/10 border border-slate-200/20 flex items-center justify-center overflow-hidden">
+                {profile?.avatar_url ? (
+                  <img src={profile.avatar_url} alt="Profile" className="h-full w-full object-cover" />
+                ) : (
+                  <span className={`${textColor} font-bold text-lg`}>{getInitials(profile?.full_name)}</span>
+                )}
+              </div>
+              <div>
+                <p className={`${textColor} font-bold leading-none`}>{profile?.full_name || 'Welcome'}</p>
+                <Link href="/setup-profile" onClick={() => setIsOpen(false)} className="text-xs text-secondary font-bold">Edit Profile</Link>
+              </div>
+            </div>
+          )}
+          <Link href="/dashboard" onClick={() => setIsOpen(false)} className={`block ${textColor} font-medium`}>Dashboard</Link>
+          <Link href="/search" onClick={() => setIsOpen(false)} className={`block ${textColor} font-medium`}>Find Talent</Link>
+          <Link href="/jobs" onClick={() => setIsOpen(false)} className={`block ${textColor} font-medium`}>Find Work</Link>
+          <hr className="border-slate-100/10" />
           {user ? (
-            <button onClick={handleSignOut} className="text-red-600 font-medium">Sign Out</button>
+            <button onClick={handleSignOut} className="text-red-500 font-bold block w-full text-left">Sign Out</button>
           ) : (
-            <Link href="/login" className="block text-primary font-medium">Log In / Sign Up</Link>
+            <Link href="/login?mode=signup" onClick={() => setIsOpen(false)} className={`block ${textColor} font-bold`}>Join FxD</Link>
           )}
         </div>
       )}
