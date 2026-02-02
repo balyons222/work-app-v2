@@ -1,85 +1,56 @@
 import Link from 'next/link'
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <div className="min-h-screen bg-white">
-      
-      {/* Hero Section */}
-      <div className="relative isolate px-6 pt-14 lg:px-8">
-        <div className="mx-auto max-w-2xl py-32 sm:py-48 lg:py-56">
-          <div className="text-center">
-            <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-6xl">
-              Micro-jobs for <span className="text-secondary">everyone.</span>
-            </h1>
-            <p className="mt-6 text-lg leading-8 text-gray-600">
-              The easiest way to get tasks done or earn extra cash. 
-              No complicated contracts, just connect and work.
-            </p>
-            
-            <div className="mt-10 flex items-center justify-center gap-x-6">
-              
-              {/* Button 1: For Workers */}
-              <Link 
-                href="/jobs" 
-                className="rounded-md bg-black px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-gray-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black"
-              >
-                Find Work
-              </Link>
-              
-              {/* Button 2: For Employers */}
-              <Link 
-                href="/dashboard" 
-                className="text-sm font-semibold leading-6 text-gray-900 border border-gray-200 px-5 py-3 rounded-md hover:bg-gray-50"
-              >
-                Post a Job <span aria-hidden="true">→</span>
-              </Link>
+    <div className="relative min-h-screen flex flex-col items-center justify-center bg-[#0B0E2A] text-white overflow-hidden">
+      {/* Background Glow Effect */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-secondary/20 blur-[120px] rounded-full" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/20 blur-[120px] rounded-full" />
 
-            </div>
-          </div>
+      <div className="relative z-10 max-w-4xl px-4 text-center">
+        {/* Badge */}
+        <div className="inline-block px-4 py-1 mb-8 border border-slate-700 rounded-full bg-slate-900/50 backdrop-blur-sm">
+          <span className="text-xs font-bold tracking-[0.2em] text-slate-400 uppercase">
+            Exclusive Event Staffing Network
+          </span>
+        </div>
+
+        {/* Main Headline */}
+        <h1 className="text-6xl md:text-8xl font-black tracking-tight mb-6">
+          Stay <span className="text-secondary italic">FxD.</span>
+        </h1>
+
+        {/* Sub-headline Copy from Image */}
+        <p className="text-lg md:text-xl text-slate-300 max-w-2xl mx-auto leading-relaxed mb-12">
+          Directly connect with vetted site leads, technology experts, and marketing 
+          specialists for large-scale endurance and live events.
+        </p>
+
+        {/* Call to Action Buttons */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <Link 
+            href="/login?mode=signup"
+            className="w-full sm:w-auto px-10 py-4 bg-secondary hover:bg-teal-400 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 group"
+          >
+            Hire Talent
+            <span className="group-hover:translate-x-1 transition-transform">→</span>
+          </Link>
+          
+          <Link 
+            href="/login?mode=signup"
+            className="w-full sm:w-auto px-10 py-4 bg-white/5 hover:bg-white/10 border border-slate-700 text-white font-bold rounded-xl transition-all"
+          >
+            Join FxD
+          </Link>
         </div>
       </div>
 
-      {/* Features Section */}
-      <div className="bg-gray-50 py-24 sm:py-32">
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl lg:text-center">
-            <h2 className="text-base font-semibold leading-7 text-secondary">Work Faster</h2>
-            <p className="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-              Everything you need to get started
-            </p>
-          </div>
-          <div className="mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-4xl">
-            <dl className="grid max-w-xl grid-cols-1 gap-x-8 gap-y-10 lg:max-w-none lg:grid-cols-2 lg:gap-y-16">
-              
-              <div className="relative pl-16">
-                <dt className="text-base font-semibold leading-7 text-gray-900">
-                  <div className="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-lg bg-black">
-                    💰
-                  </div>
-                  Instant Pricing
-                </dt>
-                <dd className="mt-2 text-base leading-7 text-gray-600">
-                  See exactly how much a job pays before you apply. No hidden negotiations.
-                </dd>
-              </div>
-
-              <div className="relative pl-16">
-                <dt className="text-base font-semibold leading-7 text-gray-900">
-                  <div className="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-lg bg-black">
-                    🛡️
-                  </div>
-                  Secure Profiles
-                </dt>
-                <dd className="mt-2 text-base leading-7 text-gray-600">
-                  Hire with confidence by checking applicant bios and past history.
-                </dd>
-              </div>
-
-            </dl>
-          </div>
-        </div>
+      {/* Trust Bar Footer (Optional) */}
+      <div className="absolute bottom-12 w-full text-center">
+        <p className="text-[10px] uppercase tracking-[0.3em] text-slate-500 font-bold">
+          Trusted by staff at major productions
+        </p>
       </div>
-
     </div>
   )
 }
