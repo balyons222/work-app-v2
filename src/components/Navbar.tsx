@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { useState, useEffect } from 'react'
-import { useRouter, usePathname } from 'next/navigation' // Added usePathname
+import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '../utils/supabase/client'
 
 export default function Navbar() {
@@ -11,7 +11,7 @@ export default function Navbar() {
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState<any>(null)
   const router = useRouter()
-  const pathname = usePathname() // Detect current page
+  const pathname = usePathname()
   const supabase = createClient()
 
   const isHome = pathname === '/'
@@ -56,8 +56,11 @@ export default function Navbar() {
     return name ? name.charAt(0).toUpperCase() : 'U'
   }
 
-  // Define dynamic classes based on whether we are on the homepage
-  const navBg = isHome ? 'bg-transparent border-transparent' : 'bg-white border-slate-200'
+  // --- FIX: Variables must be defined here, before the return statement ---
+  const navBg = isHome 
+    ? 'bg-transparent border-transparent' 
+    : 'bg-white border-slate-200 shadow-sm'
+  
   const textColor = isHome ? 'text-white' : 'text-primary'
 
   return (
@@ -72,7 +75,8 @@ export default function Navbar() {
                 alt="FxD Events" 
                 width={150} 
                 height={50} 
-                className={`h-12 w-auto object-contain ${isHome ? 'brightness-0 invert' : ''}`} 
+                // Added brightness-200 to ensure logo pops on dark home background
+                className={`h-12 w-auto object-contain transition-all ${isHome ? 'invert brightness-200' : ''}`} 
                 priority 
               />
             </Link>
@@ -101,7 +105,7 @@ export default function Navbar() {
 
                 <button 
                   onClick={handleSignOut}
-                  className="bg-secondary hover:bg-teal-600 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-lg"
+                  className="bg-secondary hover:bg-teal-600 text-white px-4 py-2 rounded-lg font-bold text-sm transition-all"
                 >
                   Sign Out
                 </button>
