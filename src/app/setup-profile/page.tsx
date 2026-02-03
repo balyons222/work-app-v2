@@ -78,9 +78,13 @@ export default function SetupProfile() {
           setLocation(data.location || '')
           setAvatarUrl(data.avatar_url || null)
           
-          // Parse saved CSV string back into array
-          if (data.skills) {
-             setSelectedRoles(data.skills.split(',').map((s: string) => s.trim()))
+          // FIX: If the DB column is an array, we use it directly. 
+          // If it's null, we default to empty array.
+          if (Array.isArray(data.skills)) {
+            setSelectedRoles(data.skills)
+          } else if (typeof data.skills === 'string') {
+            // Fallback in case old data exists as a string
+            setSelectedRoles(data.skills.split(',').map((s: string) => s.trim()))
           }
         }
       }
@@ -127,15 +131,15 @@ export default function SetupProfile() {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (user) {
-        // Flatten array to comma-separated string for storage
-        const skillsString = selectedRoles.join(', ')
-
+        // FIX: We do NOT .join() the array anymore. 
+        // We send the array directly to the DB.
+        
         const { error } = await supabase.from('profiles').upsert({
           id: user.id,
           full_name: fullName,
           role: role,
           bio: bio,
-          skills: skillsString, 
+          skills: selectedRoles, // Sending JavaScript Array -> Postgres Array
           location: location,
           avatar_url: avatarUrl,
           updated_at: new Date().toISOString(),
@@ -150,6 +154,7 @@ export default function SetupProfile() {
           }
           router.refresh()
         } else {
+          console.error(error)
           toast.error(error.message)
         }
       }
