@@ -1,8 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { createClient } from '../utils/supabase/client'
-import { StarIcon } from '@heroicons/react/24/solid'
-import { StarIcon as StarOutline } from '@heroicons/react/24/outline'
 
 export default function StarRating({ userId, readOnly = true }: { userId: string, readOnly?: boolean }) {
   const [rating, setRating] = useState(0)
@@ -28,18 +26,15 @@ export default function StarRating({ userId, readOnly = true }: { userId: string
 
   return (
     <div className="flex items-center gap-1">
-      <div className="flex text-yellow-400">
+      <div className="flex text-yellow-400 text-lg leading-none">
         {[1, 2, 3, 4, 5].map((star) => (
           <span key={star}>
-            {star <= Math.round(rating) ? (
-              <StarIcon className="h-4 w-4" />
-            ) : (
-              <StarOutline className="h-4 w-4 text-slate-300" />
-            )}
+            {/* Render filled star if rating is high enough, else empty star */}
+            {star <= Math.round(rating) ? '★' : '☆'}
           </span>
         ))}
       </div>
-      <span className="text-xs text-slate-400 font-bold ml-1">
+      <span className="text-xs text-slate-400 font-bold ml-1 pt-0.5">
         ({count} {count === 1 ? 'review' : 'reviews'})
       </span>
     </div>
