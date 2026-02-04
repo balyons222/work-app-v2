@@ -55,7 +55,7 @@ function DashboardContent() {
       }
     } catch (err: any) {
       console.error('Dashboard Load Error:', err.message)
-      // Redirect to setup if profile is missing
+      // If the error is just that the profile is missing, go to setup
       if (err.message?.includes('JSON object requested, but 0 rows were returned')) {
         router.push('/setup-profile')
       }
@@ -87,6 +87,26 @@ function DashboardContent() {
     }
   }
 
+  // Helper to safely render skills whether they are a String (Old) or Array (New)
+  const renderSkills = () => {
+    if (!profile?.skills) return <span className="text-gray-400 italic text-sm">No skills listed</span>
+    
+    // Check if it's already an array (New Format)
+    let skillsArray = []
+    if (Array.isArray(profile.skills)) {
+      skillsArray = profile.skills
+    } else if (typeof profile.skills === 'string') {
+      // Handle legacy string format
+      skillsArray = profile.skills.split(',')
+    }
+
+    return skillsArray.map((s: string, i: number) => (
+      <span key={i} className="bg-teal-50 text-secondary px-3 py-1 rounded-md text-sm font-medium border border-teal-100">
+        {s.trim()}
+      </span>
+    ))
+  }
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="animate-spin h-8 w-8 border-4 border-secondary border-t-transparent rounded-full"></div>
@@ -100,7 +120,6 @@ function DashboardContent() {
         {/* SHARED HEADER: PROFILE OVERVIEW */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
-            {/* Avatar Section */}
             <div className="h-16 w-16 bg-primary rounded-full overflow-hidden flex items-center justify-center text-white text-2xl font-bold border border-slate-200">
               {profile?.avatar_url ? (
                 <img src={profile.avatar_url} alt="Profile" className="h-full w-full object-cover" />
@@ -130,11 +149,8 @@ function DashboardContent() {
                 <div className="mt-6">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Top Skills</h3>
                   <div className="flex flex-wrap gap-2">
-                    {profile?.skills ? profile.skills.split(',').map((s: string) => (
-                      <span key={s} className="bg-teal-50 text-secondary px-3 py-1 rounded-md text-sm font-medium border border-teal-100">
-                        {s.trim()}
-                      </span>
-                    )) : <span className="text-gray-400 italic text-sm">No skills listed</span>}
+                    {/* SAFE RENDER FUNCTION */}
+                    {renderSkills()}
                   </div>
                 </div>
               </div>
