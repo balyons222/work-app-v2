@@ -1,39 +1,81 @@
-import { createClient } from '@/src/utils/supabase/server'
+'use client'
+
+import { useEffect, useState } from 'react'
+// ✅ FIXED: Use absolute path with @ alias
+import { createClient } from '@/src/utils/supabase/client'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import toast from 'react-hot-toast'
+// ✅ FIXED: Use absolute path with @ alias
+import StarRating from '@/src/components/StarRating'
 
-// This generates the page for each unique profile ID
-export default async function PublicProfilePage({ params }: { params: { id: string } }) {
-  const supabase = await createClient()
+export default function PublicProfilePage() {
+  const [profile, setProfile] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  
+  const supabase = createClient()
+  const params = useParams()
+  const router = useRouter()
+  // safely cast the param to string
+  const profileId = params?.id as string
 
-  // 1. Fetch the specific profile by ID
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', params.id)
-    .single()
+  useEffect(() => {
+    async function loadProfile() {
+      if (!profileId) return
 
-  // 2. If no profile is found, show the 404 page
-  if (!profile) {
-    notFound()
+      // 1. Get Current User
+      const { data: { user } } = await supabase.auth.getUser()
+      setCurrentUser(user)
+
+      // 2. Fetch the Profile being viewed
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', profileId)
+        .single()
+
+      if (error) {
+        console.error('Error fetching profile:', error)
+        toast.error('Profile not found')
+      } else {
+        setProfile(data)
+      }
+      setLoading(false)
+    }
+
+    loadProfile()
+  }, [profileId, supabase])
+
+  const handleContact = async () => {
+    if (!currentUser) {
+      toast.error('Please log in to contact this user')
+      router.push('/login')
+      return
+    }
+    toast.success(`Feature coming soon: Chat with ${profile.full_name}`)
   }
 
-  // Helper to handle skills whether they are String or Array
+  // Helper for Skills
   const renderSkills = () => {
-    let skillsArray: string[] = []
+    if (!profile?.skills) return <span className="text-slate-400 italic">No skills listed</span>
     
+    let skillsArray = []
     if (Array.isArray(profile.skills)) {
       skillsArray = profile.skills
     } else if (typeof profile.skills === 'string') {
       skillsArray = profile.skills.split(',')
     }
 
-    return skillsArray.map((skill, i) => (
+    return skillsArray.map((s: string, i: number) => (
       <span key={i} className="px-3 py-1 bg-teal-50 text-secondary border border-teal-100 text-xs font-bold uppercase rounded-md">
-        {skill.trim()}
+        {s.trim()}
       </span>
     ))
   }
+
+  if (loading) return <div className="p-20 text-center">Loading Profile...</div>
+  if (!profile) return <div className="p-20 text-center">Profile not found.</div>
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4">
@@ -47,7 +89,7 @@ export default async function PublicProfilePage({ params }: { params: { id: stri
         {/* Profile Card */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
           
-          {/* Header / Avatar */}
+          {/* Header */}
           <div className="p-8 md:p-12 flex flex-col md:flex-row items-center gap-8 border-b border-slate-100">
             <div className="h-32 w-32 rounded-full bg-slate-100 border-4 border-white shadow-lg overflow-hidden shrink-0">
               {profile.avatar_url ? (
@@ -63,13 +105,18 @@ export default async function PublicProfilePage({ params }: { params: { id: stri
               <p className="text-lg text-slate-500 font-medium flex items-center justify-center md:justify-start gap-2">
                 📍 {profile.location || 'Location Not Set'}
               </p>
-              <div className="mt-4 inline-block px-4 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-black uppercase tracking-widest">
-                {profile.role}
+              
+              <div className="flex items-center justify-center md:justify-start gap-3 mt-4">
+                <span className="px-4 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-black uppercase tracking-widest">
+                  {profile.role}
+                </span>
+                {/* StarRating Component */}
+                <StarRating userId={profile.id} readOnly />
               </div>
             </div>
           </div>
 
-          {/* Details Section */}
+          {/* Details */}
           <div className="p-8 md:p-12 bg-slate-50/50">
             <div className="grid gap-10">
               
@@ -87,17 +134,20 @@ export default async function PublicProfilePage({ params }: { params: { id: stri
                   {profile.role === 'organizer' ? 'Events Managed' : 'Skills & Roles'}
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                  {renderSkills().length > 0 ? renderSkills() : (
-                    <span className="text-slate-400 italic">No skills listed</span>
-                  )}
+                  {renderSkills()}
                 </div>
               </section>
 
-              {/* Action Button (Optional - Message/Hire) */}
-              <section className="pt-8 border-t border-slate-200">
-                 <button className="w-full md:w-auto px-8 py-3 bg-primary text-white font-bold rounded-xl hover:bg-slate-800 transition-all shadow-lg">
-                   Contact {profile.full_name.split(' ')[0]}
-                 </button>
+              {/* Actions */}
+              <section className="pt-8 border-t border-slate-200 flex flex-col sm:flex-row gap-4">
+                 {currentUser?.id !== profile.id && (
+                   <button 
+                    onClick={handleContact}
+                    className="flex-1 px-8 py-3 bg-primary text-white font-bold rounded-xl hover:bg-slate-800 transition-all shadow-lg"
+                   >
+                     Message {profile.full_name.split(' ')[0]}
+                   </button>
+                 )}
               </section>
 
             </div>
