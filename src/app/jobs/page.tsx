@@ -8,7 +8,8 @@ import { useRouter } from 'next/navigation'
 
 function JobBoardContent() {
   const [jobs, setJobs] = useState<any[]>([])
-  const [myApplications, setMyApplications] = useState<Set<string>>(new Set())
+  // ✅ CHANGED: Store status string instead of just ID
+  const [myAppStatus, setMyAppStatus] = useState<Record<string, string>>({}) 
   const [loading, setLoading] = useState(true)
   
   // Filter States
@@ -26,7 +27,6 @@ function JobBoardContent() {
   }, [])
 
   async function checkUserAndLoadJobs() {
-    // 1. Get User
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       router.push('/login')
@@ -34,66 +34,56 @@ function JobBoardContent() {
     }
     setCurrentUser(user)
 
-    // 2. Fetch Open Jobs
+    // 1. Fetch Open Jobs
     const { data: jobsData, error } = await supabase
       .from('jobs')
-      .select(`
-        *,
-        events ( title, location, event_date )
-      `)
+      .select(`*, events ( title, location, event_date )`)
       .eq('status', 'open')
       .order('created_at', { ascending: false })
 
     if (error) console.error('Error loading jobs:', error)
     else setJobs(jobsData || [])
 
-    // 3. Fetch My Existing Applications
+    // 2. Fetch My Applications with STATUS
     const { data: appsData } = await supabase
       .from('applications')
-      .select('job_id')
+      .select('job_id, status') // ✅ Fetching status
       .eq('applicant_id', user.id)
 
     if (appsData) {
-      const appliedJobIds = new Set(appsData.map(app => app.job_id))
-      setMyApplications(appliedJobIds)
+      // Create a map: { 'job_id_1': 'pending', 'job_id_2': 'approved' }
+      const statusMap: Record<string, string> = {}
+      appsData.forEach(app => {
+        statusMap[app.job_id] = app.status
+      })
+      setMyAppStatus(statusMap)
     }
 
     setLoading(false)
   }
 
-  const handleApply = async (jobId: string) => {
-    if (!currentUser) return
-    const toastId = toast.loading('Sending application...')
-
-    const { error } = await supabase.from('applications').insert({
-      job_id: jobId,
-      applicant_id: currentUser.id,
-      status: 'pending'
-    })
-
-    if (error) {
-      toast.error('Failed to apply', { id: toastId })
-    } else {
-      toast.success('Applied successfully!', { id: toastId })
-      setMyApplications(prev => new Set(prev).add(jobId))
-    }
-  }
-
-  // ✅ UPDATED FILTER LOGIC: Role + City + State
+  // Filter Logic
   const filteredJobs = jobs.filter(job => {
     const jobLocation = (job.events?.location || '').toLowerCase()
-    
-    // Check Role
     const roleMatch = !filterRole || job.title.toLowerCase().includes(filterRole.toLowerCase())
-    
-    // Check City (e.g. if event is "Austin, TX", searching "Austin" matches)
     const cityMatch = !filterCity || jobLocation.includes(filterCity.toLowerCase())
-    
-    // Check State (e.g. searching "TX" matches)
     const stateMatch = !filterState || jobLocation.includes(filterState.toLowerCase())
-
     return roleMatch && cityMatch && stateMatch
   })
+
+  // Helper to get button style based on status
+  const getButtonConfig = (status?: string) => {
+    switch (status) {
+      case 'approved':
+        return { text: '✓ HIRED!', classes: 'bg-green-600 text-white border-green-600 shadow-green-200' }
+      case 'rejected':
+        return { text: '✕ Not Selected', classes: 'bg-slate-100 text-slate-400 border-slate-200' }
+      case 'pending':
+        return { text: '✓ Applied', classes: 'bg-slate-100 text-slate-500 border-slate-200' }
+      default:
+        return { text: 'View & Apply', classes: 'bg-white text-primary border-primary hover:bg-primary hover:text-white' }
+    }
+  }
 
   if (loading) return <div className="p-20 text-center">Loading Opportunities...</div>
 
@@ -108,29 +98,11 @@ function JobBoardContent() {
             <p className="text-slate-500">Browse open positions and join the crew.</p>
           </div>
           
-          {/* ✅ 3-COLUMN FILTER BAR */}
+          {/* Filters */}
           <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
-            <input 
-              type="text" 
-              placeholder="Role (e.g. Audio)..." 
-              className="p-3 w-full sm:w-48 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary text-sm font-bold"
-              value={filterRole}
-              onChange={(e) => setFilterRole(e.target.value)}
-            />
-            <input 
-              type="text" 
-              placeholder="City (e.g. Austin)..." 
-              className="p-3 w-full sm:w-40 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary text-sm font-bold"
-              value={filterCity}
-              onChange={(e) => setFilterCity(e.target.value)}
-            />
-             <input 
-              type="text" 
-              placeholder="State (e.g. TX)..." 
-              className="p-3 w-full sm:w-24 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary text-sm font-bold"
-              value={filterState}
-              onChange={(e) => setFilterState(e.target.value)}
-            />
+            <input type="text" placeholder="Role..." className="p-3 w-full sm:w-48 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary text-sm font-bold" value={filterRole} onChange={(e) => setFilterRole(e.target.value)} />
+            <input type="text" placeholder="City..." className="p-3 w-full sm:w-40 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary text-sm font-bold" value={filterCity} onChange={(e) => setFilterCity(e.target.value)} />
+             <input type="text" placeholder="State..." className="p-3 w-full sm:w-24 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary text-sm font-bold" value={filterState} onChange={(e) => setFilterState(e.target.value)} />
           </div>
         </div>
 
@@ -139,59 +111,39 @@ function JobBoardContent() {
           {filteredJobs.length === 0 ? (
             <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
               <p className="text-slate-400 font-medium">No jobs found matching your filters.</p>
-              <button 
-                onClick={() => { setFilterRole(''); setFilterCity(''); setFilterState('') }}
-                className="mt-2 text-secondary font-bold text-sm hover:underline"
-              >
-                Clear all filters
-              </button>
+              <button onClick={() => { setFilterRole(''); setFilterCity(''); setFilterState('') }} className="mt-2 text-secondary font-bold text-sm hover:underline">Clear all filters</button>
             </div>
           ) : (
             filteredJobs.map(job => {
-              const isApplied = myApplications.has(job.id)
+              const status = myAppStatus[job.id] // undefined, pending, approved, or rejected
+              const btnConfig = getButtonConfig(status)
               
               return (
-                <div key={job.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all group">
+                <div key={job.id} className={`bg-white p-6 rounded-2xl border ${status === 'approved' ? 'border-green-500 ring-1 ring-green-500' : 'border-slate-100'} shadow-sm hover:shadow-md transition-all group`}>
                   <div className="flex flex-col md:flex-row justify-between gap-6">
                     
-                    {/* Job Details */}
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <span className="px-3 py-1 bg-teal-50 text-secondary text-xs font-bold uppercase tracking-widest rounded-md">
-                          {job.title}
-                        </span>
-                        <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-1 rounded-md">
-                          ${job.rate}
-                        </span>
+                        <span className="px-3 py-1 bg-teal-50 text-secondary text-xs font-bold uppercase tracking-widest rounded-md">{job.title}</span>
+                        <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-1 rounded-md">${job.rate}</span>
+                        {status === 'approved' && <span className="bg-green-600 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase">You're Hired!</span>}
                       </div>
-                      
-                      <h3 className="text-xl font-bold text-primary mb-1">
-                        {job.events?.title || 'Untitled Event'}
-                      </h3>
-                      
+                      <h3 className="text-xl font-bold text-primary mb-1">{job.events?.title || 'Untitled Event'}</h3>
                       <div className="flex items-center gap-4 text-sm text-slate-500 font-medium mb-3">
                         <span>📍 {job.events?.location || 'Location TBD'}</span>
                         <span>📅 {job.start_date ? new Date(job.start_date).toLocaleDateString() : 'Date TBD'}</span>
                       </div>
-
-                      <p className="text-slate-600 leading-relaxed text-sm">
-                        {job.description || "No specific details provided."}
-                      </p>
+                      <p className="text-slate-600 leading-relaxed text-sm line-clamp-2">{job.description}</p>
                     </div>
 
-                    {/* Apply Action */}
                     <div className="flex items-center">
-  <Link 
-    href={`/jobs/${job.id}`}
-    className={`w-full md:w-auto px-8 py-3 rounded-xl font-bold transition-all shadow-md text-center block ${
-      isApplied 
-        ? 'bg-slate-100 text-slate-400 border border-slate-200' 
-        : 'bg-white text-primary border-2 border-primary hover:bg-primary hover:text-white'
-    }`}
-  >
-    {isApplied ? 'View Status' : 'View Position'}
-  </Link>
-</div>
+                      <Link 
+                        href={`/jobs/${job.id}`}
+                        className={`w-full md:w-auto px-8 py-3 rounded-xl font-bold transition-all shadow-sm text-center block border-2 ${btnConfig.classes}`}
+                      >
+                        {btnConfig.text}
+                      </Link>
+                    </div>
 
                   </div>
                 </div>
@@ -199,7 +151,6 @@ function JobBoardContent() {
             })
           )}
         </div>
-
       </div>
     </div>
   )
