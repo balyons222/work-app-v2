@@ -10,7 +10,12 @@ function JobBoardContent() {
   const [jobs, setJobs] = useState<any[]>([])
   const [myApplications, setMyApplications] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  
+  // Filter States
   const [filterRole, setFilterRole] = useState('')
+  const [filterCity, setFilterCity] = useState('')
+  const [filterState, setFilterState] = useState('')
+  
   const [currentUser, setCurrentUser] = useState<any>(null)
 
   const supabase = createClient()
@@ -29,7 +34,7 @@ function JobBoardContent() {
     }
     setCurrentUser(user)
 
-    // 2. Fetch Open Jobs (and link to Event details)
+    // 2. Fetch Open Jobs
     const { data: jobsData, error } = await supabase
       .from('jobs')
       .select(`
@@ -42,7 +47,7 @@ function JobBoardContent() {
     if (error) console.error('Error loading jobs:', error)
     else setJobs(jobsData || [])
 
-    // 3. Fetch My Existing Applications (so we can disable the button if already applied)
+    // 3. Fetch My Existing Applications
     const { data: appsData } = await supabase
       .from('applications')
       .select('job_id')
@@ -58,7 +63,6 @@ function JobBoardContent() {
 
   const handleApply = async (jobId: string) => {
     if (!currentUser) return
-
     const toastId = toast.loading('Sending application...')
 
     const { error } = await supabase.from('applications').insert({
@@ -71,44 +75,76 @@ function JobBoardContent() {
       toast.error('Failed to apply', { id: toastId })
     } else {
       toast.success('Applied successfully!', { id: toastId })
-      // Update local state to show "Applied" immediately
       setMyApplications(prev => new Set(prev).add(jobId))
     }
   }
 
-  // Filter Logic
-  const filteredJobs = jobs.filter(job => 
-    !filterRole || job.title.toLowerCase().includes(filterRole.toLowerCase())
-  )
+  // ✅ UPDATED FILTER LOGIC: Role + City + State
+  const filteredJobs = jobs.filter(job => {
+    const jobLocation = (job.events?.location || '').toLowerCase()
+    
+    // Check Role
+    const roleMatch = !filterRole || job.title.toLowerCase().includes(filterRole.toLowerCase())
+    
+    // Check City (e.g. if event is "Austin, TX", searching "Austin" matches)
+    const cityMatch = !filterCity || jobLocation.includes(filterCity.toLowerCase())
+    
+    // Check State (e.g. searching "TX" matches)
+    const stateMatch = !filterState || jobLocation.includes(filterState.toLowerCase())
+
+    return roleMatch && cityMatch && stateMatch
+  })
 
   if (loading) return <div className="p-20 text-center">Loading Opportunities...</div>
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
+        <div className="flex flex-col lg:flex-row justify-between items-end mb-10 gap-6">
           <div>
             <h1 className="text-3xl font-black text-primary">Find Gigs</h1>
             <p className="text-slate-500">Browse open positions and join the crew.</p>
           </div>
           
-          {/* Search/Filter */}
-          <input 
-            type="text" 
-            placeholder="Filter by Role (e.g. Audio, Video)..." 
-            className="p-3 w-full md:w-80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary"
-            value={filterRole}
-            onChange={(e) => setFilterRole(e.target.value)}
-          />
+          {/* ✅ 3-COLUMN FILTER BAR */}
+          <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
+            <input 
+              type="text" 
+              placeholder="Role (e.g. Audio)..." 
+              className="p-3 w-full sm:w-48 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary text-sm font-bold"
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+            />
+            <input 
+              type="text" 
+              placeholder="City (e.g. Austin)..." 
+              className="p-3 w-full sm:w-40 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary text-sm font-bold"
+              value={filterCity}
+              onChange={(e) => setFilterCity(e.target.value)}
+            />
+             <input 
+              type="text" 
+              placeholder="State (e.g. TX)..." 
+              className="p-3 w-full sm:w-24 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary text-sm font-bold"
+              value={filterState}
+              onChange={(e) => setFilterState(e.target.value)}
+            />
+          </div>
         </div>
 
         {/* Job Grid */}
         <div className="space-y-4">
           {filteredJobs.length === 0 ? (
             <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
-              <p className="text-slate-400 font-medium">No jobs found matching your search.</p>
+              <p className="text-slate-400 font-medium">No jobs found matching your filters.</p>
+              <button 
+                onClick={() => { setFilterRole(''); setFilterCity(''); setFilterState('') }}
+                className="mt-2 text-secondary font-bold text-sm hover:underline"
+              >
+                Clear all filters
+              </button>
             </div>
           ) : (
             filteredJobs.map(job => {
