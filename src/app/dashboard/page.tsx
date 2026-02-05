@@ -12,11 +12,14 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   
-  // New Event Form State
+  // Event Form State
   const [title, setTitle] = useState('')
   const [location, setLocation] = useState('')
   const [date, setDate] = useState('')
   const [budget, setBudget] = useState('')
+  // ✅ NEW FIELDS (Step 2)
+  const [website, setWebsite] = useState('')
+  const [description, setDescription] = useState('')
 
   const supabase = createClient()
   const router = useRouter()
@@ -55,7 +58,6 @@ function DashboardContent() {
       }
     } catch (err: any) {
       console.error('Dashboard Load Error:', err.message)
-      // If the error is just that the profile is missing, go to setup
       if (err.message?.includes('JSON object requested, but 0 rows were returned')) {
         router.push('/setup-profile')
       }
@@ -74,6 +76,9 @@ function DashboardContent() {
       location,
       event_date: date,
       budget: parseFloat(budget),
+      // ✅ Insert New Fields
+      website: website, 
+      description: description,
       organizer_id: user.id
     })
 
@@ -82,24 +87,21 @@ function DashboardContent() {
     } else {
       toast.success('Event created!')
       setIsCreating(false)
-      setTitle(''); setLocation(''); setDate(''); setBudget('')
+      // Reset Form
+      setTitle(''); setLocation(''); setDate(''); setBudget(''); setWebsite(''); setDescription('')
       loadDashboardData()
     }
   }
 
-  // Helper to safely render skills whether they are a String (Old) or Array (New)
+  // Helper to safely render skills
   const renderSkills = () => {
     if (!profile?.skills) return <span className="text-gray-400 italic text-sm">No skills listed</span>
-    
-    // Check if it's already an array (New Format)
     let skillsArray = []
     if (Array.isArray(profile.skills)) {
       skillsArray = profile.skills
     } else if (typeof profile.skills === 'string') {
-      // Handle legacy string format
       skillsArray = profile.skills.split(',')
     }
-
     return skillsArray.map((s: string, i: number) => (
       <span key={i} className="bg-teal-50 text-secondary px-3 py-1 rounded-md text-sm font-medium border border-teal-100">
         {s.trim()}
@@ -117,7 +119,7 @@ function DashboardContent() {
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
         
-        {/* SHARED HEADER: PROFILE OVERVIEW */}
+        {/* SHARED HEADER */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
             <div className="h-16 w-16 bg-primary rounded-full overflow-hidden flex items-center justify-center text-white text-2xl font-bold border border-slate-200">
@@ -137,7 +139,7 @@ function DashboardContent() {
           </Link>
         </div>
 
-        {/* CONDITION 1: CONTRACTOR VIEW */}
+        {/* CONTRACTOR VIEW */}
         {profile?.role === 'contractor' && (
           <div className="grid gap-6 md:grid-cols-3">
             <div className="md:col-span-2 space-y-6">
@@ -149,7 +151,6 @@ function DashboardContent() {
                 <div className="mt-6">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Top Skills</h3>
                   <div className="flex flex-wrap gap-2">
-                    {/* SAFE RENDER FUNCTION */}
                     {renderSkills()}
                   </div>
                 </div>
@@ -164,7 +165,7 @@ function DashboardContent() {
           </div>
         )}
 
-        {/* CONDITION 2: ORGANIZER VIEW */}
+        {/* ORGANIZER VIEW */}
         {profile?.role === 'organizer' && (
           <>
             <div className="flex justify-between items-end mb-8">
@@ -180,16 +181,32 @@ function DashboardContent() {
               </button>
             </div>
 
+            {/* ✅ UPDATED CREATE EVENT FORM (Step 2 Applied) */}
             {isCreating && (
-              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
-                <h2 className="text-xl font-bold mb-4">Create New Event</h2>
+              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-8 animate-in fade-in slide-in-from-top-4">
+                <h2 className="text-xl font-bold mb-4">1. Create New Event Container</h2>
                 <form onSubmit={handleCreateEvent} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  
+                  {/* Title & Location */}
                   <input type="text" placeholder="Event Name" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={title} onChange={e => setTitle(e.target.value)} required />
-                  <input type="text" placeholder="Location" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={location} onChange={e => setLocation(e.target.value)} required />
-                  <input type="date" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={date} onChange={e => setDate(e.target.value)} required />
-                  <input type="number" placeholder="Total Budget ($)" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={budget} onChange={e => setBudget(e.target.value)} required />
-                  <button type="submit" className="md:col-span-2 bg-secondary text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition-colors">
-                    Create Event
+                  <input type="text" placeholder="Location (City, State)" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={location} onChange={e => setLocation(e.target.value)} required />
+                  
+                  {/* Date & Budget */}
+                  <div className="flex flex-col">
+                    <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Event Date</label>
+                    <input type="date" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={date} onChange={e => setDate(e.target.value)} required />
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Total Labor Budget</label>
+                    <input type="number" placeholder="$ 0.00" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={budget} onChange={e => setBudget(e.target.value)} required />
+                  </div>
+
+                  {/* NEW: Website & Description */}
+                  <input type="url" placeholder="Event Website (Optional)" className="md:col-span-2 p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={website} onChange={e => setWebsite(e.target.value)} />
+                  <textarea placeholder="Event Description / Notes..." className="md:col-span-2 p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary h-20" value={description} onChange={e => setDescription(e.target.value)} />
+
+                  <button type="submit" className="md:col-span-2 bg-secondary text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition-colors shadow-md">
+                    Create Event & Start Staffing →
                   </button>
                 </form>
               </div>
@@ -230,7 +247,6 @@ function DashboardContent() {
   )
 }
 
-// Wrap in Suspense to prevent the "Client-side Exception" crash
 export default function UniversalDashboard() {
   return (
     <Suspense fallback={<div className="p-12 text-center text-slate-500">Loading Dashboard...</div>}>
