@@ -1,119 +1,106 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/src/utils/supabase/client'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 
-function EventDirectoryContent() {
-  const [events, setEvents] = useState<any[]>([])
+export default function PublicEventPage() {
+  const [event, setEvent] = useState<any>(null)
+  const [jobs, setJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [filterCity, setFilterCity] = useState('')
 
   const supabase = createClient()
+  const params = useParams()
+  const eventId = params?.id as string
 
   useEffect(() => {
-    async function loadEvents() {
-      // Fetch upcoming events + count of OPEN jobs
-      const { data, error } = await supabase
+    async function loadData() {
+      // 1. Get Event
+      const { data: eventData } = await supabase
         .from('events')
-        .select(`
-          *,
-          jobs (count)
-        `)
-        .gte('event_date', new Date().toISOString().split('T')[0]) // Only future events
-        .order('event_date', { ascending: true })
+        .select('*')
+        .eq('id', eventId)
+        .single()
+      
+      setEvent(eventData)
 
-      if (!error) setEvents(data || [])
+      // 2. Get Open Jobs for this Event
+      if (eventData) {
+        const { data: jobsData } = await supabase
+          .from('jobs')
+          .select('*')
+          .eq('event_id', eventId)
+          .eq('status', 'open')
+        setJobs(jobsData || [])
+      }
       setLoading(false)
     }
-    loadEvents()
-  }, [])
+    loadData()
+  }, [eventId])
 
-  // Filter Logic
-  const filteredEvents = events.filter(ev => 
-    !filterCity || ev.location.toLowerCase().includes(filterCity.toLowerCase())
-  )
-
-  if (loading) return <div className="p-20 text-center">Loading Events...</div>
+  if (loading) return <div className="p-20 text-center">Loading...</div>
+  if (!event) return <div className="p-20 text-center">Event not found</div>
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-primary">Upcoming Events</h1>
-            <p className="text-slate-500">Browse major events hiring crew right now.</p>
+        <Link href="/events" className="text-slate-400 font-bold text-sm hover:text-primary mb-8 inline-block">
+          ← Back to Events
+        </Link>
+
+        {/* Event Hero */}
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+          <div className="bg-primary p-12 text-center md:text-left">
+            <h1 className="text-4xl font-black text-white mb-2">{event.title}</h1>
+            <p className="text-white/80 text-lg font-medium">
+              📍 {event.location} • 📅 {new Date(event.event_date).toLocaleDateString()}
+            </p>
           </div>
-          
-          <input 
-            type="text" 
-            placeholder="Filter by City..." 
-            className="p-3 w-full md:w-60 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary"
-            value={filterCity}
-            onChange={(e) => setFilterCity(e.target.value)}
-          />
+          <div className="p-8 md:p-12">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">About this Event</h3>
+            <p className="text-slate-700 leading-relaxed text-lg">
+              {event.description || "No description provided."}
+            </p>
+            {event.website && (
+              <a href={event.website} target="_blank" className="inline-block mt-4 text-secondary font-bold hover:underline">
+                🔗 Visit Official Website
+              </a>
+            )}
+          </div>
         </div>
 
-        {/* Events Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredEvents.map(event => {
-            // Count open jobs (Supabase returns count as an array of objects usually, but we simplify here)
-            const jobCount = event.jobs?.[0]?.count || 0 
-            // Note: If exact count logic varies, we can refine, but 'count' usually works with .select('*, jobs(count)')
-
-            return (
-              <Link 
-                href={`/events/${event.id}`} 
-                key={event.id}
-                className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md hover:-translate-y-1 transition-all group"
-              >
-                <div className="h-32 bg-slate-800 flex items-center justify-center relative">
-                   {/* Placeholder for Event Cover Image if you add one later */}
-                   <h3 className="text-2xl font-black text-white px-6 text-center z-10">{event.title}</h3>
-                   <div className="absolute inset-0 bg-primary/50 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-                
-                <div className="p-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <p className="font-bold text-slate-700">📍 {event.location}</p>
-                      <p className="text-sm text-slate-500">📅 {new Date(event.event_date).toLocaleDateString()}</p>
-                    </div>
-                  </div>
-
-                  <p className="text-slate-600 text-sm line-clamp-2 mb-6 h-10">
-                    {event.description || "No description provided."}
-                  </p>
-
-                  <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                      Hiring Status
-                    </span>
-                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold uppercase">
-                      View Open Roles →
-                    </span>
+        {/* Available Roles */}
+        <h2 className="text-2xl font-black text-primary mb-6">Open Positions</h2>
+        <div className="grid gap-4">
+          {jobs.length === 0 ? (
+            <div className="bg-white p-8 rounded-2xl border border-dashed border-slate-200 text-center text-slate-400">
+              No open positions listed for this event currently.
+            </div>
+          ) : (
+            jobs.map(job => (
+              <div key={job.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+                <div>
+                  <h3 className="font-bold text-lg text-primary">{job.title}</h3>
+                  <div className="flex gap-4 text-sm text-slate-500">
+                    <span>${job.rate} total pay</span>
+                    <span>•</span>
+                    <span>{job.start_date ? new Date(job.start_date).toLocaleDateString() : 'TBD'}</span>
                   </div>
                 </div>
-              </Link>
-            )
-          })}
+                <Link 
+                  href={`/jobs/${job.id}`}
+                  className="px-6 py-2 bg-secondary text-white font-bold rounded-lg hover:bg-teal-700 transition-colors"
+                >
+                  View & Apply
+                </Link>
+              </div>
+            ))
+          )}
         </div>
-        
-        {filteredEvents.length === 0 && (
-           <div className="text-center py-20 text-slate-400">No upcoming events found.</div>
-        )}
 
       </div>
     </div>
-  )
-}
-
-export default function EventsPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <EventDirectoryContent />
-    </Suspense>
   )
 }
