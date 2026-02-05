@@ -181,18 +181,17 @@ function JobBoardContent() {
 
                     {/* Apply Action */}
                     <div className="flex items-center">
-                      <button 
-                        onClick={() => handleApply(job.id)}
-                        disabled={isApplied}
-                        className={`w-full md:w-auto px-8 py-3 rounded-xl font-bold transition-all shadow-md ${
-                          isApplied 
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                            : 'bg-primary text-white hover:bg-slate-800'
-                        }`}
-                      >
-                        {isApplied ? '✓ Applied' : 'Apply Now'}
-                      </button>
-                    </div>
+  <Link 
+    href={`/jobs/${job.id}`}
+    className={`w-full md:w-auto px-8 py-3 rounded-xl font-bold transition-all shadow-md text-center block ${
+      isApplied 
+        ? 'bg-slate-100 text-slate-400 border border-slate-200' 
+        : 'bg-white text-primary border-2 border-primary hover:bg-primary hover:text-white'
+    }`}
+  >
+    {isApplied ? 'View Status' : 'View Position'}
+  </Link>
+</div>
 
                   </div>
                 </div>
