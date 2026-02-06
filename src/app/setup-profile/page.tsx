@@ -69,7 +69,6 @@ export default function SetupProfile() {
     async function getProfile() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        // use maybeSingle to prevent 406 error on new users
         const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
         if (data) {
           setFullName(data.full_name || '')
@@ -78,12 +77,9 @@ export default function SetupProfile() {
           setLocation(data.location || '')
           setAvatarUrl(data.avatar_url || null)
           
-          // FIX: If the DB column is an array, we use it directly. 
-          // If it's null, we default to empty array.
           if (Array.isArray(data.skills)) {
             setSelectedRoles(data.skills)
           } else if (typeof data.skills === 'string') {
-            // Fallback in case old data exists as a string
             setSelectedRoles(data.skills.split(',').map((s: string) => s.trim()))
           }
         }
@@ -131,15 +127,12 @@ export default function SetupProfile() {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (user) {
-        // FIX: We do NOT .join() the array anymore. 
-        // We send the array directly to the DB.
-        
         const { error } = await supabase.from('profiles').upsert({
           id: user.id,
           full_name: fullName,
           role: role,
           bio: bio,
-          skills: selectedRoles, // Sending JavaScript Array -> Postgres Array
+          skills: selectedRoles, 
           location: location,
           avatar_url: avatarUrl,
           updated_at: new Date().toISOString(),
@@ -226,7 +219,10 @@ export default function SetupProfile() {
         {/* STEP 2: ROLES & LOCATION */}
         {step === 2 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-            <h2 className="text-2xl font-black text-primary">Your Expertise</h2>
+            {/* Dynamic Title based on Role */}
+            <h2 className="text-2xl font-black text-primary">
+              {role === 'contractor' ? 'Your Expertise' : 'Your Location'}
+            </h2>
             
             <input 
               value={location}
@@ -235,35 +231,37 @@ export default function SetupProfile() {
               onChange={(e) => setLocation(e.target.value)} 
             />
 
-            <div className="h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 sticky top-0 bg-white pb-2 z-10">
-                {role === 'contractor' ? 'Select all roles you are qualified for:' : 'Select events you typically organize:'}
-              </p>
-              
-              {/* Category Loop */}
-              {Object.entries(ROLE_CATEGORIES).map(([category, roles]) => (
-                <div key={category} className="mb-6">
-                  <h3 className="text-sm font-bold text-primary mb-3 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    {category}
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {roles.map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => toggleRole(r)}
-                        className={`px-3 py-2 rounded-lg text-xs font-bold border transition-all text-left ${
-                          selectedRoles.includes(r)
-                            ? 'bg-secondary text-white border-secondary shadow-sm'
-                            : 'bg-white text-slate-500 border-slate-200 hover:border-secondary hover:text-secondary'
-                        }`}
-                      >
-                        {r}
-                      </button>
-                    ))}
+            {/* ✅ CONDITIONAL: Only show skills list if role is 'contractor' */}
+            {role === 'contractor' && (
+              <div className="h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 sticky top-0 bg-white pb-2 z-10">
+                  Select all roles you are qualified for:
+                </p>
+                
+                {Object.entries(ROLE_CATEGORIES).map(([category, roles]) => (
+                  <div key={category} className="mb-6">
+                    <h3 className="text-sm font-bold text-primary mb-3 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                      {category}
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {roles.map((r) => (
+                        <button
+                          key={r}
+                          onClick={() => toggleRole(r)}
+                          className={`px-3 py-2 rounded-lg text-xs font-bold border transition-all text-left ${
+                            selectedRoles.includes(r)
+                              ? 'bg-secondary text-white border-secondary shadow-sm'
+                              : 'bg-white text-slate-500 border-slate-200 hover:border-secondary hover:text-secondary'
+                          }`}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             <div className="flex gap-4 pt-4 border-t border-slate-100">
               <button onClick={prevStep} className="flex-1 font-bold text-slate-400 hover:text-primary transition-colors">Back</button>
@@ -279,7 +277,7 @@ export default function SetupProfile() {
             <textarea 
               value={bio}
               className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl h-40 outline-none focus:ring-2 focus:ring-secondary" 
-              placeholder="Tell us about your experience..."
+              placeholder={role === 'organizer' ? "Tell us about your production company..." : "Tell us about your experience..."}
               onChange={(e) => setBio(e.target.value)} 
             />
             <button onClick={handleSubmit} disabled={loading} className="w-full bg-secondary text-white font-bold py-4 rounded-xl shadow-lg hover:bg-teal-600 transition-all">
