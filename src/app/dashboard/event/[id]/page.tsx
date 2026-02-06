@@ -36,7 +36,6 @@ export default function EventManagerPage() {
   }, [eventId])
 
   async function loadEventData() {
-    // 1. Fetch Event Details
     const { data: eventData, error: eventError } = await supabase
       .from('events')
       .select('*')
@@ -50,7 +49,6 @@ export default function EventManagerPage() {
     }
     setEvent(eventData)
 
-    // 2. Fetch Jobs AND Applications (with Applicant Profiles)
     const { data: jobsData } = await supabase
       .from('jobs')
       .select(`
@@ -59,6 +57,8 @@ export default function EventManagerPage() {
           id,
           status,
           applicant_id,
+          payment_status, 
+          payment_method,
           profiles ( full_name, avatar_url, role )
         )
       `)
@@ -105,7 +105,27 @@ export default function EventManagerPage() {
     if (error) toast.error('Update failed')
     else {
       toast.success(`Applicant ${newStatus}`)
-      loadEventData() // Refresh UI
+      loadEventData() 
+    }
+  }
+
+  // ✅ FIXED: Correctly placed Function (Moved out of JSX)
+  const handleMarkPaid = async (appId: string) => {
+    const method = prompt('How did you pay them? (e.g. Venmo, Check #123, Cash)')
+    if (!method) return
+
+    const { error } = await supabase
+      .from('applications')
+      .update({ 
+        payment_status: 'paid',
+        payment_method: method
+      })
+      .eq('id', appId)
+
+    if (error) toast.error('Error updating payment')
+    else {
+      toast.success('Marked as Paid')
+      loadEventData()
     }
   }
 
@@ -255,25 +275,36 @@ export default function EventManagerPage() {
                             </div>
                           </div>
 
-                          {/* Action Buttons */}
-                          {app.status === 'pending' && (
-                            <div className="flex gap-2">
-                              <button 
-                                onClick={() => handleAppStatus(app.id, 'rejected')}
-                                className="px-3 py-1 text-xs font-bold text-red-500 bg-red-50 rounded-lg hover:bg-red-100"
-                              >
-                                Decline
-                              </button>
-                              <button 
-                                onClick={() => handleAppStatus(app.id, 'approved')}
-                                className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-lg hover:bg-green-600 shadow-sm"
-                              >
-                                Hire
-                              </button>
-                            </div>
-                          )}
-                          {app.status === 'approved' && <span className="text-green-600 font-bold text-sm">✓ Hired</span>}
-                          {app.status === 'rejected' && <span className="text-red-400 font-bold text-sm">✕ Declined</span>}
+                          {/* ACTION BUTTONS (Pending / Paid) */}
+                          <div className="text-right">
+                            {/* 1. Pending: Show Hire/Decline */}
+                            {app.status === 'pending' && (
+                              <div className="flex gap-2">
+                                <button onClick={() => handleAppStatus(app.id, 'rejected')} className="px-3 py-1 text-xs font-bold text-red-500 bg-red-50 rounded-lg">Decline</button>
+                                <button onClick={() => handleAppStatus(app.id, 'approved')} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-lg">Hire</button>
+                              </div>
+                            )}
+
+                            {/* 2. Hired: Show "Mark Paid" or "Paid" status */}
+                            {app.status === 'approved' && (
+                              app.payment_status === 'paid' ? (
+                                <div>
+                                  <span className="text-green-600 font-bold text-sm block">✓ Paid</span>
+                                  <span className="text-xs text-slate-400 font-medium">{app.payment_method}</span>
+                                </div>
+                              ) : (
+                                <button 
+                                  onClick={() => handleMarkPaid(app.id)}
+                                  className="px-4 py-2 text-xs font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-700 shadow-sm"
+                                >
+                                  Mark Paid
+                                </button>
+                              )
+                            )}
+
+                            {/* 3. Declined */}
+                            {app.status === 'rejected' && <span className="text-red-400 font-bold text-sm">✕ Declined</span>}
+                          </div>
 
                         </div>
                       ))}
