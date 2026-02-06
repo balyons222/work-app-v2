@@ -1,50 +1,24 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '../../utils/supabase/client'
+import { createClient } from '@/src/utils/supabase/client'
 import toast from 'react-hot-toast'
 
 // 🛠️ CATEGORIZED ROLES CONFIGURATION
 const ROLE_CATEGORIES = {
   "Operations": [
-    "General Event Support",
-    "Site Lead",
-    "Site Manager",
-    "Finish Line Lead",
-    "Start Line Lead",
-    "Course Lead",
-    "Vendor Manager",
-    "Project Manager",
-    "Equipment Operator",
-    "Forklift Operator",
-    "Truck Driver (nonCDL)",
-    "Truck Driver (CDL)",
-    "Electrician/Power",
-    "Volunteer Coordinator",
-    "Expo Lead",
-    "Expo Support",
-    "Warehouse Coordinator"
+    "General Event Support", "Site Lead", "Site Manager", "Finish Line Lead", "Start Line Lead", "Course Lead", 
+    "Vendor Manager", "Project Manager", "Equipment Operator", "Forklift Operator", "Truck Driver (nonCDL)", 
+    "Truck Driver (CDL)", "Electrician/Power", "Volunteer Coordinator", "Expo Lead", "Expo Support", "Warehouse Coordinator"
   ],
   "Technology": [
-    "Timer (Mylaps)",
-    "Timer (Chronotrack)",
-    "Timer (Race Result)",
-    "Registration Support (Run Signup)",
-    "Registration Support (Race Roster)",
-    "Registration Support (Haku)",
-    "Sound/Audio"
+    "Timer (Mylaps)", "Timer (Chronotrack)", "Timer (Race Result)", "Registration Support (Run Signup)", 
+    "Registration Support (Race Roster)", "Registration Support (Haku)", "Sound/Audio"
   ],
   "Marketing/PR/Communications": [
-    "Race Announcer",
-    "Public Relations",
-    "Communications Lead",
-    "Marketing Support",
-    "Content Creator",
-    "Social Media Influencer Coordinator",
-    "Social Media Influencer",
-    "Photographer - Content",
-    "Photographer - Individual Runner",
-    "Community Outreach"
+    "Race Announcer", "Public Relations", "Communications Lead", "Marketing Support", "Content Creator", 
+    "Social Media Influencer Coordinator", "Social Media Influencer", "Photographer - Content", 
+    "Photographer - Individual Runner", "Community Outreach"
   ]
 }
 
@@ -56,9 +30,7 @@ export default function SetupProfile() {
   const [location, setLocation] = useState('')
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   
-  // Stores selected roles as an array of strings
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
-  
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   
@@ -105,10 +77,7 @@ export default function SetupProfile() {
       const fileExt = file.name.split('.').pop()
       const fileName = `${Date.now()}.${fileExt}`
 
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, file)
-
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file)
       if (uploadError) throw uploadError
       
       const { data } = supabase.storage.from('avatars').getPublicUrl(fileName)
@@ -125,7 +94,6 @@ export default function SetupProfile() {
     setLoading(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
-
       if (user) {
         const { error } = await supabase.from('profiles').upsert({
           id: user.id,
@@ -140,14 +108,9 @@ export default function SetupProfile() {
 
         if (!error) {
           toast.success('Profile finalized!')
-          if (role === 'contractor') {
-            router.push('/jobs')
-          } else {
-            router.push('/dashboard')
-          }
+          router.push(role === 'contractor' ? '/jobs' : '/dashboard')
           router.refresh()
         } else {
-          console.error(error)
           toast.error(error.message)
         }
       }
@@ -166,14 +129,9 @@ export default function SetupProfile() {
       {/* Progress Bar */}
       <div className="max-w-md w-full mb-8">
         <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
-          <div 
-            className="h-full bg-secondary transition-all duration-500" 
-            style={{ width: `${(step / 3) * 100}%` }}
-          />
+          <div className="h-full bg-secondary transition-all duration-500" style={{ width: `${(step / 3) * 100}%` }} />
         </div>
-        <p className="text-right text-[10px] font-black text-slate-400 mt-2 uppercase tracking-widest">
-          Step {step} of 3
-        </p>
+        <p className="text-right text-[10px] font-black text-slate-400 mt-2 uppercase tracking-widest">Step {step} of 3</p>
       </div>
 
       <div className="max-w-2xl w-full bg-white rounded-3xl shadow-xl p-8 md:p-10 border border-slate-200">
@@ -197,17 +155,8 @@ export default function SetupProfile() {
             </div>
 
             <div className="space-y-4">
-              <input 
-                value={fullName}
-                placeholder="Full Name"
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" 
-                onChange={(e) => setFullName(e.target.value)} 
-              />
-              <select 
-                value={role}
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" 
-                onChange={(e) => setRole(e.target.value)}
-              >
+              <input value={fullName} placeholder="Full Name" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setFullName(e.target.value)} />
+              <select value={role} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setRole(e.target.value)}>
                 <option value="contractor">Event Professional</option>
                 <option value="organizer">Event Organizer</option>
               </select>
@@ -219,40 +168,23 @@ export default function SetupProfile() {
         {/* STEP 2: ROLES & LOCATION */}
         {step === 2 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-            {/* Dynamic Title based on Role */}
-            <h2 className="text-2xl font-black text-primary">
-              {role === 'contractor' ? 'Your Expertise' : 'Your Location'}
-            </h2>
+            <h2 className="text-2xl font-black text-primary">{role === 'contractor' ? 'Your Expertise' : 'Your Location'}</h2>
             
-            <input 
-              value={location}
-              placeholder="Primary City (e.g. Austin, TX)"
-              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" 
-              onChange={(e) => setLocation(e.target.value)} 
-            />
+            <input value={location} placeholder="Primary City (e.g. Austin, TX)" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setLocation(e.target.value)} />
 
-            {/* ✅ CONDITIONAL: Only show skills list if role is 'contractor' */}
-            {role === 'contractor' && (
+            {/* ✅ CONDITIONAL: Roles List */}
+            {role === 'contractor' ? (
               <div className="h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 sticky top-0 bg-white pb-2 z-10">
-                  Select all roles you are qualified for:
-                </p>
-                
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 sticky top-0 bg-white pb-2 z-10">Select all roles you are qualified for:</p>
                 {Object.entries(ROLE_CATEGORIES).map(([category, roles]) => (
                   <div key={category} className="mb-6">
-                    <h3 className="text-sm font-bold text-primary mb-3 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                      {category}
-                    </h3>
+                    <h3 className="text-sm font-bold text-primary mb-3 bg-slate-50 p-2 rounded-lg border border-slate-100">{category}</h3>
                     <div className="flex flex-wrap gap-2">
                       {roles.map((r) => (
                         <button
                           key={r}
                           onClick={() => toggleRole(r)}
-                          className={`px-3 py-2 rounded-lg text-xs font-bold border transition-all text-left ${
-                            selectedRoles.includes(r)
-                              ? 'bg-secondary text-white border-secondary shadow-sm'
-                              : 'bg-white text-slate-500 border-slate-200 hover:border-secondary hover:text-secondary'
-                          }`}
+                          className={`px-3 py-2 rounded-lg text-xs font-bold border transition-all text-left ${selectedRoles.includes(r) ? 'bg-secondary text-white border-secondary shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:border-secondary hover:text-secondary'}`}
                         >
                           {r}
                         </button>
@@ -260,6 +192,12 @@ export default function SetupProfile() {
                     </div>
                   </div>
                 ))}
+              </div>
+            ) : (
+              // ✅ UI FEEDBACK: Show this if Organizer so they know it's hidden on purpose
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-center">
+                <p className="text-slate-500 font-medium">As an Organizer, you do not need to list trade skills.</p>
+                <p className="text-xs text-slate-400 mt-2 uppercase tracking-wide">Continue to your Company Bio &rarr;</p>
               </div>
             )}
 
@@ -275,7 +213,7 @@ export default function SetupProfile() {
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
             <h2 className="text-2xl font-black text-primary">The Pitch</h2>
             <textarea 
-              value={bio}
+              value={bio} 
               className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl h-40 outline-none focus:ring-2 focus:ring-secondary" 
               placeholder={role === 'organizer' ? "Tell us about your production company..." : "Tell us about your experience..."}
               onChange={(e) => setBio(e.target.value)} 
