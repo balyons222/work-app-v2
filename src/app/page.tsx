@@ -17,7 +17,7 @@ export default function HomePage() {
 
         {/* Main Headline */}
         <h1 className="text-6xl md:text-8xl font-black tracking-tight mb-6">
-          Work=<span className="text-secondary italic">FxD.</span>
+          Work<span className="text-secondary italic">FxD.</span>
         </h1>
 
         {/* Sub-headline Copy from Image */}
