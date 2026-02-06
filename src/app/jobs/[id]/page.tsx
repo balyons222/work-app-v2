@@ -9,9 +9,9 @@ import toast from 'react-hot-toast'
 export default function JobDetailsPage() {
   const [job, setJob] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  // ✅ CHANGED: Track exact status string
   const [appStatus, setAppStatus] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [agreed, setAgreed] = useState(false)
 
   const supabase = createClient()
   const params = useParams()
@@ -59,7 +59,10 @@ export default function JobDetailsPage() {
       router.push('/login')
       return
     }
-
+if (!agreed) {
+    toast.error('You must agree to the job terms to apply.')
+    return
+  }
     const toastId = toast.loading('Sending application...')
     const { error } = await supabase.from('applications').insert({
       job_id: jobId,
@@ -76,6 +79,19 @@ export default function JobDetailsPage() {
   }
 
   // Helper for button UI
+  <div className="mb-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+  <label className="flex items-start gap-3 cursor-pointer">
+    <input 
+      type="checkbox" 
+      className="mt-1 h-5 w-5 text-secondary rounded focus:ring-secondary"
+      checked={agreed}
+      onChange={(e) => setAgreed(e.target.checked)}
+    />
+    <span className="text-sm text-slate-600">
+      I agree to fulfill the duties listed in the description for the rate of <span className="font-bold text-slate-900">${job.rate}</span>. I understand this is a binding agreement.
+    </span>
+  </label>
+</div>
   const getButtonUI = () => {
     if (appStatus === 'approved') return { text: '🎉 You are Hired!', disabled: true, classes: 'bg-green-600 text-white cursor-default' }
     if (appStatus === 'rejected') return { text: '✕ Application Declined', disabled: true, classes: 'bg-slate-200 text-slate-500 cursor-not-allowed' }
