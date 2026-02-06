@@ -11,6 +11,7 @@ export default function JobDetailsPage() {
   const [loading, setLoading] = useState(true)
   const [appStatus, setAppStatus] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
+  // ✅ State for Digital Handshake
   const [agreed, setAgreed] = useState(false)
 
   const supabase = createClient()
@@ -40,7 +41,6 @@ export default function JobDetailsPage() {
     setJob(jobData)
 
     if (user) {
-      // ✅ Fetch exact status
       const { data: appData } = await supabase
         .from('applications')
         .select('status') 
@@ -59,10 +59,13 @@ export default function JobDetailsPage() {
       router.push('/login')
       return
     }
-if (!agreed) {
-    toast.error('You must agree to the job terms to apply.')
-    return
-  }
+
+    // ✅ Enforce Agreement Logic
+    if (!agreed) {
+      toast.error('You must agree to the job terms to apply.')
+      return
+    }
+
     const toastId = toast.loading('Sending application...')
     const { error } = await supabase.from('applications').insert({
       job_id: jobId,
@@ -79,19 +82,6 @@ if (!agreed) {
   }
 
   // Helper for button UI
-  <div className="mb-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
-  <label className="flex items-start gap-3 cursor-pointer">
-    <input 
-      type="checkbox" 
-      className="mt-1 h-5 w-5 text-secondary rounded focus:ring-secondary"
-      checked={agreed}
-      onChange={(e) => setAgreed(e.target.checked)}
-    />
-    <span className="text-sm text-slate-600">
-      I agree to fulfill the duties listed in the description for the rate of <span className="font-bold text-slate-900">${job.rate}</span>. I understand this is a binding agreement.
-    </span>
-  </label>
-</div>
   const getButtonUI = () => {
     if (appStatus === 'approved') return { text: '🎉 You are Hired!', disabled: true, classes: 'bg-green-600 text-white cursor-default' }
     if (appStatus === 'rejected') return { text: '✕ Application Declined', disabled: true, classes: 'bg-slate-200 text-slate-500 cursor-not-allowed' }
@@ -104,6 +94,7 @@ if (!agreed) {
   if (loading) return <div className="p-20 text-center">Loading Details...</div>
   if (!job) return <div className="p-20 text-center">Job not found.</div>
 
+  // ✅ VISUALS START HERE
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4">
       <div className="max-w-3xl mx-auto">
@@ -152,6 +143,24 @@ if (!agreed) {
               </section>
 
               <div className="pt-8 border-t border-slate-200 mt-8">
+                
+                {/* ✅ CHECKBOX IS CORRECTLY PLACED HERE INSIDE THE RENDER AREA */}
+                {!appStatus && (
+                  <div className="mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <label className="flex items-start gap-3 cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        className="mt-1 h-5 w-5 text-secondary rounded focus:ring-secondary cursor-pointer"
+                        checked={agreed}
+                        onChange={(e) => setAgreed(e.target.checked)}
+                      />
+                      <span className="text-sm text-slate-600">
+                        I agree to fulfill the duties listed in the description for the rate of <span className="font-bold text-slate-900">${job.rate}</span>. I understand this is a binding agreement.
+                      </span>
+                    </label>
+                  </div>
+                )}
+
                 <button 
                   onClick={handleApply}
                   disabled={btnUI.disabled}
