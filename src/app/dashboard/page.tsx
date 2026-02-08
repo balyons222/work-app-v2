@@ -9,15 +9,18 @@ import toast from 'react-hot-toast'
 function DashboardContent() {
   const [profile, setProfile] = useState<any>(null)
   const [events, setEvents] = useState<any[]>([])
+  
+  // ✅ NEW: Contractor State
+  const [myApps, setMyApps] = useState<any[]>([])
+  
   const [loading, setLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   
-  // Event Form State
+  // Event Form State (Organizer)
   const [title, setTitle] = useState('')
   const [location, setLocation] = useState('')
   const [date, setDate] = useState('')
   const [budget, setBudget] = useState('')
-  // ✅ NEW FIELDS (Step 2)
   const [website, setWebsite] = useState('')
   const [description, setDescription] = useState('')
 
@@ -46,7 +49,7 @@ function DashboardContent() {
       if (profileError) throw profileError
       setProfile(profileData)
 
-      // 2. Fetch Role-Specific Data
+      // 2. ORGANIZER DATA FETCH
       if (profileData?.role === 'organizer') {
         const { data: eventsData } = await supabase
           .from('events')
@@ -56,6 +59,24 @@ function DashboardContent() {
         
         setEvents(eventsData || [])
       }
+
+      // 3. ✅ CONTRACTOR DATA FETCH (New)
+      if (profileData?.role === 'contractor') {
+        const { data: appsData } = await supabase
+          .from('applications')
+          .select(`
+            *,
+            jobs (
+              id, title, rate, start_date, end_date,
+              events ( title, location, event_date )
+            )
+          `)
+          .eq('applicant_id', user.id)
+          .order('created_at', { ascending: false })
+
+        setMyApps(appsData || [])
+      }
+
     } catch (err: any) {
       console.error('Dashboard Load Error:', err.message)
       if (err.message?.includes('JSON object requested, but 0 rows were returned')) {
@@ -72,42 +93,26 @@ function DashboardContent() {
     if (!user) return
 
     const { error } = await supabase.from('events').insert({
-      title,
-      location,
-      event_date: date,
-      budget: parseFloat(budget),
-      // ✅ Insert New Fields
-      website: website, 
-      description: description,
-      organizer_id: user.id
+      title, location, event_date: date, budget: parseFloat(budget),
+      website, description, organizer_id: user.id
     })
 
-    if (error) {
-      toast.error('Failed to create event')
-    } else {
+    if (error) toast.error('Failed to create event')
+    else {
       toast.success('Event created!')
       setIsCreating(false)
-      // Reset Form
       setTitle(''); setLocation(''); setDate(''); setBudget(''); setWebsite(''); setDescription('')
       loadDashboardData()
     }
   }
 
-  // Helper to safely render skills
-  const renderSkills = () => {
-    if (!profile?.skills) return <span className="text-gray-400 italic text-sm">No skills listed</span>
-    let skillsArray = []
-    if (Array.isArray(profile.skills)) {
-      skillsArray = profile.skills
-    } else if (typeof profile.skills === 'string') {
-      skillsArray = profile.skills.split(',')
-    }
-    return skillsArray.map((s: string, i: number) => (
-      <span key={i} className="bg-teal-50 text-secondary px-3 py-1 rounded-md text-sm font-medium border border-teal-100">
-        {s.trim()}
-      </span>
-    ))
-  }
+  // --- CONTRACTOR HELPER: Sort Applications ---
+  const bookedJobs = myApps.filter(a => a.status === 'approved' && a.payment_status !== 'paid')
+  const pendingJobs = myApps.filter(a => a.status === 'pending')
+  const pastJobs = myApps.filter(a => a.payment_status === 'paid')
+  // Calculate total earnings from past jobs
+  const totalEarnings = pastJobs.reduce((sum, app) => sum + (app.jobs?.rate || 0), 0)
+
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -139,33 +144,121 @@ function DashboardContent() {
           </Link>
         </div>
 
-        {/* CONTRACTOR VIEW */}
+        {/* ========================================================= */}
+        {/* ✅ CONTRACTOR DASHBOARD VIEW */}
+        {/* ========================================================= */}
         {profile?.role === 'contractor' && (
-          <div className="grid gap-6 md:grid-cols-3">
-            <div className="md:col-span-2 space-y-6">
-              <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
-                <h2 className="text-xl font-bold mb-4">Professional Bio</h2>
-                <p className="text-gray-600 leading-relaxed">
-                  {profile?.bio || "No bio added yet. Tell organizers about your experience."}
-                </p>
-                <div className="mt-6">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Top Skills</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {renderSkills()}
+          <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            
+            {/* 1. UPCOMING SCHEDULE (Booked) */}
+            <section>
+              <h2 className="text-xl font-black text-primary mb-4 flex items-center gap-2">
+                📅 Upcoming Schedule <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">{bookedJobs.length}</span>
+              </h2>
+              {bookedJobs.length === 0 ? (
+                <div className="bg-white p-8 rounded-2xl border border-dashed border-slate-200 text-center">
+                  <p className="text-slate-400 mb-4">No confirmed gigs yet.</p>
+                  <Link href="/jobs" className="inline-block bg-black text-white px-6 py-2 rounded-xl font-bold hover:bg-slate-800">Find Work</Link>
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {bookedJobs.map(app => (
+                    <div key={app.id} className="bg-white p-6 rounded-2xl border border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-xs font-bold text-green-600 uppercase tracking-widest">Confirmed</span>
+                        <span className="font-black text-lg text-slate-900">${app.jobs?.rate}</span>
+                      </div>
+                      <h3 className="font-bold text-xl text-primary">{app.jobs?.events?.title}</h3>
+                      <p className="text-slate-500 text-sm font-bold mb-4">{app.jobs?.title}</p>
+                      
+                      <div className="space-y-1 text-sm text-slate-600">
+                        <p>📍 {app.jobs?.events?.location}</p>
+                        <p>🗓️ {app.jobs?.start_date} → {app.jobs?.end_date}</p>
+                      </div>
+                      
+                      <div className="mt-4 pt-4 border-t border-slate-100">
+                        <Link href={`/jobs/${app.jobs?.id}`} className="block text-center text-secondary font-bold text-sm hover:underline">
+                          View Job Details & Contact
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* 2. PENDING APPLICATIONS */}
+            <section>
+              <h2 className="text-xl font-black text-primary mb-4 flex items-center gap-2">
+                ⏳ Pending Applications <span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded-full">{pendingJobs.length}</span>
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {pendingJobs.map(app => (
+                  <div key={app.id} className="bg-white p-5 rounded-xl border border-slate-200 opacity-80 hover:opacity-100 transition-opacity">
+                    <div className="flex justify-between mb-2">
+                      <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded uppercase">Under Review</span>
+                      <span className="font-bold text-slate-700">${app.jobs?.rate}</span>
+                    </div>
+                    <h4 className="font-bold text-slate-900">{app.jobs?.title}</h4>
+                    <p className="text-xs text-slate-500 mb-3">{app.jobs?.events?.title}</p>
+                    <Link href={`/jobs/${app.jobs?.id}`} className="text-xs text-primary font-bold hover:underline">
+                      View Status &rarr;
+                    </Link>
                   </div>
+                ))}
+                {pendingJobs.length === 0 && (
+                  <p className="text-slate-400 text-sm italic col-span-full">No pending applications.</p>
+                )}
+              </div>
+            </section>
+
+            {/* 3. WORK HISTORY & EARNINGS */}
+            <section>
+              <div className="flex items-end justify-between mb-4">
+                <h2 className="text-xl font-black text-primary">💰 Work History</h2>
+                <div className="text-right">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total Earned</p>
+                  <p className="text-2xl font-black text-green-600">${totalEarnings.toLocaleString()}</p>
                 </div>
               </div>
-            </div>
-            <div className="space-y-6">
-              <Link href="/jobs" className="block p-10 bg-black text-white rounded-3xl text-center hover:bg-gray-800 transition-all shadow-xl shadow-slate-200">
-                <span className="text-xl font-bold block mb-1">Find Work &rarr;</span>
-                <p className="text-gray-400 text-sm">Browse latest gigs</p>
-              </Link>
-            </div>
+              
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                {pastJobs.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400">No completed jobs yet.</div>
+                ) : (
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-100 text-xs uppercase text-slate-500 font-bold">
+                      <tr>
+                        <th className="p-4">Event</th>
+                        <th className="p-4">Role</th>
+                        <th className="p-4">Date</th>
+                        <th className="p-4 text-right">Paid</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {pastJobs.map(app => (
+                        <tr key={app.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-4 font-bold text-slate-900">{app.jobs?.events?.title}</td>
+                          <td className="p-4 text-slate-600">{app.jobs?.title}</td>
+                          <td className="p-4 text-slate-500">{new Date(app.jobs?.start_date).toLocaleDateString()}</td>
+                          <td className="p-4 text-right font-bold text-green-600">
+                            ${app.jobs?.rate}
+                            <span className="block text-[10px] text-slate-400 font-normal uppercase">{app.payment_method}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </section>
+
           </div>
         )}
 
-        {/* ORGANIZER VIEW */}
+        {/* ========================================================= */}
+        {/* ✅ ORGANIZER DASHBOARD VIEW (Existing Code) */}
+        {/* ========================================================= */}
         {profile?.role === 'organizer' && (
           <>
             <div className="flex justify-between items-end mb-8">
@@ -181,17 +274,13 @@ function DashboardContent() {
               </button>
             </div>
 
-            {/* ✅ UPDATED CREATE EVENT FORM (Step 2 Applied) */}
+            {/* CREATE EVENT FORM */}
             {isCreating && (
               <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-8 animate-in fade-in slide-in-from-top-4">
                 <h2 className="text-xl font-bold mb-4">1. Create New Event Container</h2>
                 <form onSubmit={handleCreateEvent} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  
-                  {/* Title & Location */}
                   <input type="text" placeholder="Event Name" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={title} onChange={e => setTitle(e.target.value)} required />
                   <input type="text" placeholder="Location (City, State)" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={location} onChange={e => setLocation(e.target.value)} required />
-                  
-                  {/* Date & Budget */}
                   <div className="flex flex-col">
                     <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Event Date</label>
                     <input type="date" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={date} onChange={e => setDate(e.target.value)} required />
@@ -200,14 +289,9 @@ function DashboardContent() {
                     <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Total Labor Budget</label>
                     <input type="number" placeholder="$ 0.00" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={budget} onChange={e => setBudget(e.target.value)} required />
                   </div>
-
-                  {/* NEW: Website & Description */}
                   <input type="url" placeholder="Event Website (Optional)" className="md:col-span-2 p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={website} onChange={e => setWebsite(e.target.value)} />
                   <textarea placeholder="Event Description / Notes..." className="md:col-span-2 p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary h-20" value={description} onChange={e => setDescription(e.target.value)} />
-
-                  <button type="submit" className="md:col-span-2 bg-secondary text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition-colors shadow-md">
-                    Create Event & Start Staffing →
-                  </button>
+                  <button type="submit" className="md:col-span-2 bg-secondary text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition-colors shadow-md">Create Event & Start Staffing →</button>
                 </form>
               </div>
             )}
