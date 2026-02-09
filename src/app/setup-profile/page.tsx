@@ -4,6 +4,13 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/src/utils/supabase/client'
 import toast from 'react-hot-toast'
 
+// 🛠️ US STATES LIST
+const US_STATES = [
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
+  "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
+  "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"
+]
+
 // 🛠️ CATEGORIZED ROLES CONFIGURATION
 const ROLE_CATEGORIES = {
   "Operations": [
@@ -25,9 +32,15 @@ const ROLE_CATEGORIES = {
 export default function SetupProfile() {
   const [step, setStep] = useState(1)
   const [fullName, setFullName] = useState('')
+  // ✅ NEW: Phone State
+  const [phone, setPhone] = useState('')
   const [role, setRole] = useState('contractor')
   const [bio, setBio] = useState('')
-  const [location, setLocation] = useState('')
+  
+  // Location State
+  const [city, setCity] = useState('')
+  const [state, setState] = useState('')
+
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
@@ -44,10 +57,20 @@ export default function SetupProfile() {
         const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
         if (data) {
           setFullName(data.full_name || '')
+          setPhone(data.phone || '') // ✅ Load Phone
           setRole(data.role || 'contractor')
           setBio(data.bio || '')
-          setLocation(data.location || '')
           setAvatarUrl(data.avatar_url || null)
+          
+          if (data.location) {
+            const parts = data.location.split(', ')
+            if (parts.length === 2) {
+              setCity(parts[0])
+              setState(parts[1])
+            } else {
+              setCity(data.location)
+            }
+          }
           
           if (Array.isArray(data.skills)) {
             setSelectedRoles(data.skills)
@@ -92,16 +115,26 @@ export default function SetupProfile() {
 
   const handleSubmit = async () => {
     setLoading(true)
+    
+    if (!city || !state) {
+      toast.error('Please enter both City and State')
+      setLoading(false)
+      return
+    }
+
+    const formattedLocation = `${city.trim()}, ${state}`
+
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         const { error } = await supabase.from('profiles').upsert({
           id: user.id,
           full_name: fullName,
+          phone: phone, // ✅ Save Phone
           role: role,
           bio: bio,
           skills: selectedRoles, 
-          location: location,
+          location: formattedLocation,
           avatar_url: avatarUrl,
           updated_at: new Date().toISOString(),
         })
@@ -156,12 +189,23 @@ export default function SetupProfile() {
 
             <div className="space-y-4">
               <input value={fullName} placeholder="Full Name" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setFullName(e.target.value)} />
+              
+              {/* ✅ NEW: PHONE INPUT */}
+              <input 
+                type="tel"
+                value={phone}
+                placeholder="Mobile Phone (for job coordination)"
+                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" 
+                onChange={(e) => setPhone(e.target.value)} 
+              />
+
               <select value={role} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setRole(e.target.value)}>
                 <option value="contractor">Event Professional</option>
                 <option value="organizer">Event Organizer</option>
               </select>
             </div>
-            <button onClick={nextStep} disabled={!fullName} className="w-full bg-primary text-white font-bold py-4 rounded-xl disabled:opacity-50 hover:bg-slate-800 transition-all">Continue</button>
+            {/* Disable 'Continue' until Name AND Phone are filled */}
+            <button onClick={nextStep} disabled={!fullName || !phone} className="w-full bg-primary text-white font-bold py-4 rounded-xl disabled:opacity-50 hover:bg-slate-800 transition-all">Continue</button>
           </div>
         )}
 
@@ -170,9 +214,24 @@ export default function SetupProfile() {
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
             <h2 className="text-2xl font-black text-primary">{role === 'contractor' ? 'Your Expertise' : 'Your Location'}</h2>
             
-            <input value={location} placeholder="Primary City (e.g. Austin, TX)" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setLocation(e.target.value)} />
+            <div className="flex gap-4">
+              <input 
+                value={city} 
+                placeholder="City (e.g. Austin)" 
+                className="w-2/3 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" 
+                onChange={(e) => setCity(e.target.value)} 
+              />
+              <select 
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+                className="w-1/3 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary"
+              >
+                <option value="">State</option>
+                {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
 
-            {/* ✅ CONDITIONAL: Roles List */}
+            {/* CONDITIONAL: Roles List */}
             {role === 'contractor' ? (
               <div className="h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 sticky top-0 bg-white pb-2 z-10">Select all roles you are qualified for:</p>
@@ -194,7 +253,6 @@ export default function SetupProfile() {
                 ))}
               </div>
             ) : (
-              // ✅ UI FEEDBACK: Show this if Organizer so they know it's hidden on purpose
               <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-center">
                 <p className="text-slate-500 font-medium">As an Organizer, you do not need to list trade skills.</p>
                 <p className="text-xs text-slate-400 mt-2 uppercase tracking-wide">Continue to your Company Bio &rarr;</p>
