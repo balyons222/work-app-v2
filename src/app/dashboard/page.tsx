@@ -10,7 +10,7 @@ function DashboardContent() {
   const [profile, setProfile] = useState<any>(null)
   const [events, setEvents] = useState<any[]>([])
   
-  // ✅ NEW: Contractor State
+  // Contractor State
   const [myApps, setMyApps] = useState<any[]>([])
   
   const [loading, setLoading] = useState(true)
@@ -23,6 +23,10 @@ function DashboardContent() {
   const [budget, setBudget] = useState('')
   const [website, setWebsite] = useState('')
   const [description, setDescription] = useState('')
+  
+  // ✅ NEW: POC State
+  const [pocName, setPocName] = useState('')
+  const [pocPhone, setPocPhone] = useState('')
 
   const supabase = createClient()
   const router = useRouter()
@@ -60,7 +64,7 @@ function DashboardContent() {
         setEvents(eventsData || [])
       }
 
-      // 3. ✅ CONTRACTOR DATA FETCH (New)
+      // 3. CONTRACTOR DATA FETCH
       if (profileData?.role === 'contractor') {
         const { data: appsData } = await supabase
           .from('applications')
@@ -68,7 +72,7 @@ function DashboardContent() {
             *,
             jobs (
               id, title, rate, start_date, end_date,
-              events ( title, location, event_date )
+              events ( title, location, event_date, poc_name, poc_phone )
             )
           `)
           .eq('applicant_id', user.id)
@@ -94,14 +98,18 @@ function DashboardContent() {
 
     const { error } = await supabase.from('events').insert({
       title, location, event_date: date, budget: parseFloat(budget),
-      website, description, organizer_id: user.id
+      website, description, organizer_id: user.id,
+      // ✅ SAVE POC INFO
+      poc_name: pocName,
+      poc_phone: pocPhone
     })
 
     if (error) toast.error('Failed to create event')
     else {
       toast.success('Event created!')
       setIsCreating(false)
-      setTitle(''); setLocation(''); setDate(''); setBudget(''); setWebsite(''); setDescription('')
+      // Reset all fields
+      setTitle(''); setLocation(''); setDate(''); setBudget(''); setWebsite(''); setDescription(''); setPocName(''); setPocPhone('');
       loadDashboardData()
     }
   }
@@ -175,6 +183,17 @@ function DashboardContent() {
                         <p>📍 {app.jobs?.events?.location}</p>
                         <p>🗓️ {app.jobs?.start_date} → {app.jobs?.end_date}</p>
                       </div>
+
+                      {/* ✅ THE UNLOCK: Site Lead Contact Info */}
+                      {app.jobs?.events?.poc_name && (
+                        <div className="mt-4 pt-4 border-t border-slate-100">
+                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">On-Site Contact</p>
+                           <p className="text-sm font-bold text-primary">{app.jobs.events.poc_name}</p>
+                           <a href={`tel:${app.jobs.events.poc_phone}`} className="text-sm font-medium text-secondary hover:underline">
+                             📞 {app.jobs.events.poc_phone}
+                           </a>
+                        </div>
+                      )}
                       
                       <div className="mt-4 pt-4 border-t border-slate-100">
                         <Link href={`/jobs/${app.jobs?.id}`} className="block text-center text-secondary font-bold text-sm hover:underline">
@@ -257,7 +276,7 @@ function DashboardContent() {
         )}
 
         {/* ========================================================= */}
-        {/* ✅ ORGANIZER DASHBOARD VIEW (Existing Code) */}
+        {/* ✅ ORGANIZER DASHBOARD VIEW */}
         {/* ========================================================= */}
         {profile?.role === 'organizer' && (
           <>
@@ -289,6 +308,16 @@ function DashboardContent() {
                     <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Total Labor Budget</label>
                     <input type="number" placeholder="$ 0.00" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={budget} onChange={e => setBudget(e.target.value)} required />
                   </div>
+
+                  {/* ✅ NEW: SITE LEAD CONTACT */}
+                  <div className="md:col-span-2 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">On-Site Point of Contact (Visible to Hired Crew Only)</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input type="text" placeholder="Site Lead Name" className="p-3 bg-white border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={pocName} onChange={e => setPocName(e.target.value)} />
+                      <input type="tel" placeholder="Site Lead Phone" className="p-3 bg-white border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={pocPhone} onChange={e => setPocPhone(e.target.value)} />
+                    </div>
+                  </div>
+
                   <input type="url" placeholder="Event Website (Optional)" className="md:col-span-2 p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={website} onChange={e => setWebsite(e.target.value)} />
                   <textarea placeholder="Event Description / Notes..." className="md:col-span-2 p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary h-20" value={description} onChange={e => setDescription(e.target.value)} />
                   <button type="submit" className="md:col-span-2 bg-secondary text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition-colors shadow-md">Create Event & Start Staffing →</button>
