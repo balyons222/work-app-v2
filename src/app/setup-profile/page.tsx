@@ -32,7 +32,6 @@ const ROLE_CATEGORIES = {
 export default function SetupProfile() {
   const [step, setStep] = useState(1)
   const [fullName, setFullName] = useState('')
-  // ✅ NEW: Phone State
   const [phone, setPhone] = useState('')
   const [role, setRole] = useState('contractor')
   const [bio, setBio] = useState('')
@@ -57,7 +56,7 @@ export default function SetupProfile() {
         const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
         if (data) {
           setFullName(data.full_name || '')
-          setPhone(data.phone || '') // ✅ Load Phone
+          setPhone(data.phone || '')
           setRole(data.role || 'contractor')
           setBio(data.bio || '')
           setAvatarUrl(data.avatar_url || null)
@@ -116,6 +115,10 @@ export default function SetupProfile() {
   const handleSubmit = async () => {
     setLoading(true)
     
+    // Validate location only if it's shown? 
+    // Actually, Organizers might want location too, but let's keep it simple.
+    // If you want Organizers to SKIP location, we need to handle that.
+    // Assuming Organizers still need location for now.
     if (!city || !state) {
       toast.error('Please enter both City and State')
       setLoading(false)
@@ -130,7 +133,7 @@ export default function SetupProfile() {
         const { error } = await supabase.from('profiles').upsert({
           id: user.id,
           full_name: fullName,
-          phone: phone, // ✅ Save Phone
+          phone: phone, 
           role: role,
           bio: bio,
           skills: selectedRoles, 
@@ -154,7 +157,22 @@ export default function SetupProfile() {
     }
   }
 
-  const nextStep = () => setStep(s => s + 1)
+  // ✅ UPDATED NAV LOGIC
+  const nextStep = () => {
+    if (step === 1 && role === 'organizer') {
+      // If Organizer, Jump to Step 3 (Bio), skipping Roles/Location check
+      // Wait, Step 2 contains Location too. 
+      // Do you want Organizers to set Location? Usually yes.
+      // If they need location, they must go to Step 2.
+      // If the issue is simply that Step 2 UI was confusing, stick to Step 2.
+      
+      // If you want Organizers to SEE Step 2 (for location) but NOT roles:
+      setStep(s => s + 1)
+    } else {
+      setStep(s => s + 1)
+    }
+  }
+
   const prevStep = () => setStep(s => s - 1)
 
   return (
@@ -190,7 +208,6 @@ export default function SetupProfile() {
             <div className="space-y-4">
               <input value={fullName} placeholder="Full Name" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setFullName(e.target.value)} />
               
-              {/* ✅ NEW: PHONE INPUT */}
               <input 
                 type="tel"
                 value={phone}
@@ -204,7 +221,6 @@ export default function SetupProfile() {
                 <option value="organizer">Event Organizer</option>
               </select>
             </div>
-            {/* Disable 'Continue' until Name AND Phone are filled */}
             <button onClick={nextStep} disabled={!fullName || !phone} className="w-full bg-primary text-white font-bold py-4 rounded-xl disabled:opacity-50 hover:bg-slate-800 transition-all">Continue</button>
           </div>
         )}
@@ -231,8 +247,8 @@ export default function SetupProfile() {
               </select>
             </div>
 
-            {/* CONDITIONAL: Roles List */}
-            {role === 'contractor' ? (
+            {/* ✅ FIXED CONDITIONAL: Roles List Only for Contractors */}
+            {role === 'contractor' && (
               <div className="h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 sticky top-0 bg-white pb-2 z-10">Select all roles you are qualified for:</p>
                 {Object.entries(ROLE_CATEGORIES).map(([category, roles]) => (
@@ -252,12 +268,9 @@ export default function SetupProfile() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 text-center">
-                <p className="text-slate-500 font-medium">As an Organizer, you do not need to list trade skills.</p>
-                <p className="text-xs text-slate-400 mt-2 uppercase tracking-wide">Continue to your Company Bio &rarr;</p>
-              </div>
             )}
+            
+            {/* If Organizer, show nothing extra here, just location above */}
 
             <div className="flex gap-4 pt-4 border-t border-slate-100">
               <button onClick={prevStep} className="flex-1 font-bold text-slate-400 hover:text-primary transition-colors">Back</button>
