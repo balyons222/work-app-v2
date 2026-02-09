@@ -17,11 +17,18 @@ export default function EventManagerPage() {
   const [event, setEvent] = useState<any>(null)
   const [jobs, setJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [isAddingJob, setIsAddingJob] = useState(false)
+  
+  // ✅ FORM STATE
+  const [showJobForm, setShowJobForm] = useState(false)
+  const [editingJobId, setEditingJobId] = useState<string | null>(null)
 
-  // New Job Form State
   const [selectedRole, setSelectedRole] = useState('')
   const [rate, setRate] = useState('')
+  
+  // 🆕 NEW: Rate Type & Hours State
+  const [rateType, setRateType] = useState('flat') // 'flat' or 'hourly'
+  const [estimatedHours, setEstimatedHours] = useState('') 
+
   const [jobDescription, setJobDescription] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -54,11 +61,7 @@ export default function EventManagerPage() {
       .select(`
         *,
         applications (
-          id,
-          status,
-          applicant_id,
-          payment_status, 
-          payment_method,
+          id, status, applicant_id, payment_status, payment_method,
           profiles ( full_name, avatar_url, role )
         )
       `)
@@ -69,13 +72,43 @@ export default function EventManagerPage() {
     setLoading(false)
   }
 
-  const handleAddJob = async (e: React.FormEvent) => {
+  // ✅ PREPARE FORM FOR EDITING
+  const handleEditClick = (job: any) => {
+    setEditingJobId(job.id)
+    setSelectedRole(job.title)
+    setRate(job.rate.toString())
+    setJobDescription(job.description || '')
+    setStartDate(job.start_date)
+    setEndDate(job.end_date)
+    
+    // 🆕 Load New Fields (with fallbacks)
+    setRateType(job.rate_type || 'flat')
+    setEstimatedHours(job.estimated_hours ? job.estimated_hours.toString() : '')
+
+    setShowJobForm(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const resetForm = () => {
+    setEditingJobId(null)
+    setSelectedRole('')
+    setRate('')
+    setJobDescription('')
+    setStartDate('')
+    setEndDate('')
+    // 🆕 Reset New Fields
+    setRateType('flat')
+    setEstimatedHours('')
+    setShowJobForm(false)
+  }
+
+  const handleSaveJob = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedRole) return toast.error('Please select a role')
 
     const { data: { user } } = await supabase.auth.getUser()
     
-    const { error } = await supabase.from('jobs').insert({
+    const jobData = {
       event_id: eventId,
       organizer_id: user?.id,
       title: selectedRole,
@@ -83,47 +116,44 @@ export default function EventManagerPage() {
       description: jobDescription,
       start_date: startDate,
       end_date: endDate,
-      status: 'open'
-    })
+      status: 'open',
+      // 🆕 Save New Fields
+      rate_type: rateType,
+      estimated_hours: rateType === 'hourly' ? parseFloat(estimatedHours) : 0
+    }
+
+    let error;
+
+    if (editingJobId) {
+      const { error: updateError } = await supabase.from('jobs').update(jobData).eq('id', editingJobId)
+      error = updateError
+    } else {
+      const { error: insertError } = await supabase.from('jobs').insert(jobData)
+      error = insertError
+    }
 
     if (error) {
       toast.error(error.message)
     } else {
-      toast.success('Job Added!')
-      setIsAddingJob(false)
-      setSelectedRole(''); setRate(''); setJobDescription(''); setStartDate(''); setEndDate('')
+      toast.success(editingJobId ? 'Job Updated!' : 'Job Added!')
+      resetForm()
       loadEventData() 
     }
   }
 
   const handleAppStatus = async (appId: string, newStatus: string) => {
-    const { error } = await supabase
-      .from('applications')
-      .update({ status: newStatus })
-      .eq('id', appId)
-
-    if (error) toast.error('Update failed')
-    else {
+    const { error } = await supabase.from('applications').update({ status: newStatus }).eq('id', appId)
+    if (!error) {
       toast.success(`Applicant ${newStatus}`)
       loadEventData() 
     }
   }
 
-  // ✅ FIXED: Correctly placed Function (Moved out of JSX)
   const handleMarkPaid = async (appId: string) => {
     const method = prompt('How did you pay them? (e.g. Venmo, Check #123, Cash)')
     if (!method) return
-
-    const { error } = await supabase
-      .from('applications')
-      .update({ 
-        payment_status: 'paid',
-        payment_method: method
-      })
-      .eq('id', appId)
-
-    if (error) toast.error('Error updating payment')
-    else {
+    const { error } = await supabase.from('applications').update({ payment_status: 'paid', payment_method: method }).eq('id', appId)
+    if (!error) {
       toast.success('Marked as Paid')
       loadEventData()
     }
@@ -140,9 +170,14 @@ export default function EventManagerPage() {
 
   if (loading) return <div className="p-20 text-center">Loading Event...</div>
 
-  // Calculations
+  // 🆕 SMART BUDGET CALCULATION
   const totalBudget = event?.budget || 0
-  const allocatedBudget = jobs.reduce((sum, job) => sum + (job.rate || 0), 0)
+  const allocatedBudget = jobs.reduce((sum, job) => {
+    // If Hourly: Rate * Est Hours. If Flat: Rate.
+    const jobCost = job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate
+    return sum + (jobCost || 0)
+  }, 0)
+  
   const remainingBudget = totalBudget - allocatedBudget
   const percentUsed = Math.min((allocatedBudget / totalBudget) * 100, 100)
 
@@ -171,7 +206,7 @@ export default function EventManagerPage() {
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Labor Budget</p>
               <p className="text-3xl font-black text-slate-900 mb-4">${totalBudget.toLocaleString()}</p>
               <div className="space-y-3">
-                <div className="flex justify-between text-xs font-bold text-slate-500"><span>Allocated</span><span>${allocatedBudget.toLocaleString()}</span></div>
+                <div className="flex justify-between text-xs font-bold text-slate-500"><span>Allocated (Est.)</span><span>${allocatedBudget.toLocaleString()}</span></div>
                 <div className="h-3 w-full bg-white rounded-full overflow-hidden border border-slate-200">
                   <div className={`h-full transition-all duration-500 ${remainingBudget < 0 ? 'bg-red-500' : 'bg-secondary'}`} style={{ width: `${percentUsed}%` }} />
                 </div>
@@ -181,20 +216,28 @@ export default function EventManagerPage() {
           </div>
         </div>
 
-        {/* 2. JOB MANAGER */}
+        {/* 2. JOB MANAGER HEADER */}
         <div className="flex justify-between items-end mb-6">
           <h2 className="text-2xl font-black text-primary">Staffing & Applicants</h2>
-          <button onClick={() => setIsAddingJob(!isAddingJob)} className="bg-black text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg">
-            {isAddingJob ? 'Cancel' : '+ Add Role'}
+          <button 
+            onClick={() => showJobForm ? resetForm() : setShowJobForm(true)} 
+            className="bg-black text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg"
+          >
+            {showJobForm ? 'Cancel' : '+ Add Role'}
           </button>
         </div>
 
-        {/* ADD JOB FORM */}
-        {isAddingJob && (
+        {/* ADD/EDIT JOB FORM */}
+        {showJobForm && (
           <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-200 mb-8 animate-in fade-in slide-in-from-top-4">
-            <h3 className="text-lg font-bold mb-6">Create Job Role</h3>
-            <form onSubmit={handleAddJob} className="space-y-6">
+            <h3 className="text-lg font-bold mb-6">
+              {editingJobId ? 'Edit Job Role' : 'Create Job Role'}
+            </h3>
+            <form onSubmit={handleSaveJob} className="space-y-6">
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                {/* ROLE SELECTOR */}
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Role Needed</label>
                   <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold text-primary" required>
@@ -204,10 +247,45 @@ export default function EventManagerPage() {
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Pay Rate ($)</label>
-                  <input type="number" placeholder="e.g. 500" value={rate} onChange={(e) => setRate(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold text-primary" required />
+                
+                {/* 🆕 PAY TYPE (HOURLY / FLAT) */}
+                <div className="flex gap-4">
+                   <div className="w-1/2">
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Pay Type</label>
+                      <select 
+                        value={rateType} 
+                        onChange={(e) => setRateType(e.target.value)}
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold text-primary"
+                      >
+                        <option value="flat">Flat Rate ($)</option>
+                        <option value="hourly">Hourly ($/hr)</option>
+                      </select>
+                   </div>
+                   <div className="w-1/2">
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Rate</label>
+                      <input type="number" placeholder={rateType === 'hourly' ? "25" : "500"} value={rate} onChange={(e) => setRate(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold text-primary" required />
+                   </div>
                 </div>
+
+                {/* 🆕 ESTIMATED HOURS (Only visible if Hourly) */}
+                {rateType === 'hourly' && (
+                  <div className="md:col-span-2 bg-yellow-50 p-4 rounded-xl border border-yellow-100 flex items-center gap-4">
+                    <div className="flex-1">
+                       <label className="block text-xs font-bold text-yellow-600 uppercase tracking-widest mb-1">Estimated Hours</label>
+                       <p className="text-xs text-yellow-600/80">Used for budget calculation only.</p>
+                    </div>
+                    <input 
+                      type="number" 
+                      placeholder="e.g. 10" 
+                      value={estimatedHours} 
+                      onChange={(e) => setEstimatedHours(e.target.value)} 
+                      className="w-32 p-3 bg-white border border-yellow-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold text-primary" 
+                      required 
+                    />
+                  </div>
+                )}
+
+                {/* DATES */}
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Start Date</label>
                   <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" required />
@@ -216,9 +294,14 @@ export default function EventManagerPage() {
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">End Date</label>
                   <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" required />
                 </div>
+
               </div>
+
               <textarea placeholder="Specific requirements..." value={jobDescription} onChange={(e) => setJobDescription(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl h-24 outline-none focus:ring-2 focus:ring-secondary" />
-              <button type="submit" className="w-full bg-secondary text-white font-bold py-4 rounded-xl hover:bg-teal-600 transition-colors shadow-lg">Add Role to Budget</button>
+              
+              <button type="submit" className="w-full bg-secondary text-white font-bold py-4 rounded-xl hover:bg-teal-600 transition-colors shadow-lg">
+                {editingJobId ? 'Save Changes' : 'Add Role to Budget'}
+              </button>
             </form>
           </div>
         )}
@@ -231,19 +314,41 @@ export default function EventManagerPage() {
             jobs.map(job => (
               <div key={job.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
                 
-                {/* Job Header */}
                 <div className="p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-50/50 border-b border-slate-100">
                   <div>
                     <h3 className="text-xl font-black text-primary">{job.title}</h3>
-                    <div className="flex gap-4 text-sm text-slate-500 font-bold mt-1">
-                      <span className="text-green-600">${job.rate}</span>
+                    <div className="flex gap-4 text-sm text-slate-500 font-bold mt-1 items-center">
+                      {/* 🆕 DISPLAY RATE TYPE */}
+                      <span className="text-green-600 bg-green-50 px-2 py-1 rounded">
+                        ${job.rate} {job.rate_type === 'hourly' ? '/ hr' : 'flat'}
+                      </span>
+                      {job.rate_type === 'hourly' && (
+                        <span className="text-xs text-slate-400">
+                          (Est. {job.estimated_hours} hrs)
+                        </span>
+                      )}
                       <span>{job.start_date} → {job.end_date}</span>
                     </div>
                   </div>
-                  <button onClick={() => handleDeleteJob(job.id)} className="text-red-400 hover:text-red-600 font-bold text-xs">Delete Position</button>
+                  
+                  {/* ✅ EDIT / DELETE BUTTONS */}
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => handleEditClick(job)} 
+                      className="text-slate-400 hover:text-secondary font-bold text-xs uppercase tracking-wider flex items-center gap-1"
+                    >
+                      ✏️ Edit
+                    </button>
+                    <div className="h-4 w-px bg-slate-300"></div>
+                    <button 
+                      onClick={() => handleDeleteJob(job.id)} 
+                      className="text-slate-400 hover:text-red-600 font-bold text-xs uppercase tracking-wider"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
 
-                {/* Applicants List */}
                 <div className="p-6">
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
                     Applicants ({job.applications?.length || 0})
@@ -255,69 +360,9 @@ export default function EventManagerPage() {
                     <div className="space-y-3">
                       {job.applications.map((app: any) => (
                         <div key={app.id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-secondary transition-colors">
-                          
-                          {/* Applicant Info */}
                           <div className="flex items-center gap-3">
                             <Link href={`/profile/${app.applicant_id}`} className="h-10 w-10 bg-slate-200 rounded-full overflow-hidden block">
                               {app.profiles?.avatar_url ? (
                                 <img src={app.profiles.avatar_url} className="h-full w-full object-cover" />
                               ) : (
-                                <div className="h-full w-full flex items-center justify-center font-bold text-slate-400">
-                                  {app.profiles?.full_name?.charAt(0)}
-                                </div>
-                              )}
-                            </Link>
-                            <div>
-                              <Link href={`/profile/${app.applicant_id}`} className="font-bold text-primary hover:underline">
-                                {app.profiles?.full_name || 'Unknown User'}
-                              </Link>
-                              <p className="text-xs text-slate-400 uppercase font-bold">{app.status}</p>
-                            </div>
-                          </div>
-
-                          {/* ACTION BUTTONS (Pending / Paid) */}
-                          <div className="text-right">
-                            {/* 1. Pending: Show Hire/Decline */}
-                            {app.status === 'pending' && (
-                              <div className="flex gap-2">
-                                <button onClick={() => handleAppStatus(app.id, 'rejected')} className="px-3 py-1 text-xs font-bold text-red-500 bg-red-50 rounded-lg">Decline</button>
-                                <button onClick={() => handleAppStatus(app.id, 'approved')} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-lg">Hire</button>
-                              </div>
-                            )}
-
-                            {/* 2. Hired: Show "Mark Paid" or "Paid" status */}
-                            {app.status === 'approved' && (
-                              app.payment_status === 'paid' ? (
-                                <div>
-                                  <span className="text-green-600 font-bold text-sm block">✓ Paid</span>
-                                  <span className="text-xs text-slate-400 font-medium">{app.payment_method}</span>
-                                </div>
-                              ) : (
-                                <button 
-                                  onClick={() => handleMarkPaid(app.id)}
-                                  className="px-4 py-2 text-xs font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-700 shadow-sm"
-                                >
-                                  Mark Paid
-                                </button>
-                              )
-                            )}
-
-                            {/* 3. Declined */}
-                            {app.status === 'rejected' && <span className="text-red-400 font-bold text-sm">✕ Declined</span>}
-                          </div>
-
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-              </div>
-            ))
-          )}
-        </div>
-
-      </div>
-    </div>
-  )
-}
+                                <div className="h-full w-full
