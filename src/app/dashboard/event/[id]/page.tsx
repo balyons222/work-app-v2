@@ -5,6 +5,8 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+// ✅ 1. ADD THIS IMPORT
+import { sendNotification } from '@/src/utils/notifications'
 
 // 🛠️ SHARED ROLES
 const ROLE_CATEGORIES = {
@@ -24,8 +26,7 @@ export default function EventManagerPage() {
 
   const [selectedRole, setSelectedRole] = useState('')
   const [rate, setRate] = useState('')
-  
-  // 🆕 NEW: Rate Type & Hours State
+  // 🆕 NEW: Rate Type & Hours
   const [rateType, setRateType] = useState('flat') // 'flat' or 'hourly'
   const [estimatedHours, setEstimatedHours] = useState('') 
 
@@ -81,7 +82,7 @@ export default function EventManagerPage() {
     setStartDate(job.start_date)
     setEndDate(job.end_date)
     
-    // 🆕 Load New Fields (with fallbacks)
+    // 🆕 Load New Fields
     setRateType(job.rate_type || 'flat')
     setEstimatedHours(job.estimated_hours ? job.estimated_hours.toString() : '')
 
@@ -141,11 +142,40 @@ export default function EventManagerPage() {
     }
   }
 
+// ✅ 2. UPDATED STATUS FUNCTION WITH FIX
   const handleAppStatus = async (appId: string, newStatus: string) => {
     const { error } = await supabase.from('applications').update({ status: newStatus }).eq('id', appId)
+    
     if (!error) {
       toast.success(`Applicant ${newStatus}`)
+      
+      // -- START NOTIFICATION LOGIC --
+      if (newStatus === 'approved') {
+        // 👇 1. Rename this to 'rawData'
+        const { data: rawData } = await supabase
+          .from('applications')
+          .select('applicant_id, jobs(title, events(title))')
+          .eq('id', appId)
+          .single()
+
+        // 👇 2. Cast it to 'any' to fix the red squiggles
+        const appData = rawData as any
+
+        if (appData) {
+          await sendNotification({
+            userId: appData.applicant_id,
+            title: "You're Hired! 🎉",
+            message: `You have been booked for ${appData.jobs?.title} at ${appData.jobs?.events?.title}.`,
+            link: "/dashboard",
+            type: "success"
+          })
+        }
+      }
+      // -- END NOTIFICATION LOGIC --
+
       loadEventData() 
+    } else {
+      toast.error('Update failed')
     }
   }
 
@@ -234,10 +264,7 @@ export default function EventManagerPage() {
               {editingJobId ? 'Edit Job Role' : 'Create Job Role'}
             </h3>
             <form onSubmit={handleSaveJob} className="space-y-6">
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                
-                {/* ROLE SELECTOR */}
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Role Needed</label>
                   <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold text-primary" required>
@@ -248,14 +275,14 @@ export default function EventManagerPage() {
                   </select>
                 </div>
                 
-                {/* 🆕 PAY TYPE (HOURLY / FLAT) */}
+                {/* 🆕 RATE TYPE & AMOUNT */}
                 <div className="flex gap-4">
                    <div className="w-1/2">
                       <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Pay Type</label>
                       <select 
                         value={rateType} 
                         onChange={(e) => setRateType(e.target.value)}
-                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold text-primary"
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold"
                       >
                         <option value="flat">Flat Rate ($)</option>
                         <option value="hourly">Hourly ($/hr)</option>
@@ -267,7 +294,7 @@ export default function EventManagerPage() {
                    </div>
                 </div>
 
-                {/* 🆕 ESTIMATED HOURS (Only visible if Hourly) */}
+                {/* 🆕 ESTIMATED HOURS (Only if Hourly) */}
                 {rateType === 'hourly' && (
                   <div className="md:col-span-2 bg-yellow-50 p-4 rounded-xl border border-yellow-100 flex items-center gap-4">
                     <div className="flex-1">
@@ -279,13 +306,12 @@ export default function EventManagerPage() {
                       placeholder="e.g. 10" 
                       value={estimatedHours} 
                       onChange={(e) => setEstimatedHours(e.target.value)} 
-                      className="w-32 p-3 bg-white border border-yellow-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold text-primary" 
+                      className="w-32 p-3 bg-white border border-yellow-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold" 
                       required 
                     />
                   </div>
                 )}
 
-                {/* DATES */}
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Start Date</label>
                   <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" required />
@@ -294,9 +320,7 @@ export default function EventManagerPage() {
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">End Date</label>
                   <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" required />
                 </div>
-
               </div>
-
               <textarea placeholder="Specific requirements..." value={jobDescription} onChange={(e) => setJobDescription(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl h-24 outline-none focus:ring-2 focus:ring-secondary" />
               
               <button type="submit" className="w-full bg-secondary text-white font-bold py-4 rounded-xl hover:bg-teal-600 transition-colors shadow-lg">
@@ -318,7 +342,6 @@ export default function EventManagerPage() {
                   <div>
                     <h3 className="text-xl font-black text-primary">{job.title}</h3>
                     <div className="flex gap-4 text-sm text-slate-500 font-bold mt-1 items-center">
-                      {/* 🆕 DISPLAY RATE TYPE */}
                       <span className="text-green-600 bg-green-50 px-2 py-1 rounded">
                         ${job.rate} {job.rate_type === 'hourly' ? '/ hr' : 'flat'}
                       </span>
@@ -331,21 +354,10 @@ export default function EventManagerPage() {
                     </div>
                   </div>
                   
-                  {/* ✅ EDIT / DELETE BUTTONS */}
                   <div className="flex items-center gap-3">
-                    <button 
-                      onClick={() => handleEditClick(job)} 
-                      className="text-slate-400 hover:text-secondary font-bold text-xs uppercase tracking-wider flex items-center gap-1"
-                    >
-                      ✏️ Edit
-                    </button>
+                    <button onClick={() => handleEditClick(job)} className="text-slate-400 hover:text-secondary font-bold text-xs uppercase tracking-wider flex items-center gap-1">✏️ Edit</button>
                     <div className="h-4 w-px bg-slate-300"></div>
-                    <button 
-                      onClick={() => handleDeleteJob(job.id)} 
-                      className="text-slate-400 hover:text-red-600 font-bold text-xs uppercase tracking-wider"
-                    >
-                      Delete
-                    </button>
+                    <button onClick={() => handleDeleteJob(job.id)} className="text-slate-400 hover:text-red-600 font-bold text-xs uppercase tracking-wider">Delete</button>
                   </div>
                 </div>
 
