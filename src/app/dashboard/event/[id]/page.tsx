@@ -365,4 +365,46 @@ export default function EventManagerPage() {
                               {app.profiles?.avatar_url ? (
                                 <img src={app.profiles.avatar_url} className="h-full w-full object-cover" />
                               ) : (
-                                <div className="h-full w-full
+                                <div className="h-full w-full flex items-center justify-center font-bold text-slate-400">
+                                  {app.profiles?.full_name?.charAt(0)}
+                                </div>
+                              )}
+                            </Link>
+                            <div>
+                              <Link href={`/profile/${app.applicant_id}`} className="font-bold text-primary hover:underline">
+                                {app.profiles?.full_name || 'Unknown User'}
+                              </Link>
+                              <p className="text-xs text-slate-400 uppercase font-bold">{app.status}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            {app.status === 'pending' && (
+                              <div className="flex gap-2">
+                                <button onClick={() => handleAppStatus(app.id, 'rejected')} className="px-3 py-1 text-xs font-bold text-red-500 bg-red-50 rounded-lg hover:bg-red-100">Decline</button>
+                                <button onClick={() => handleAppStatus(app.id, 'approved')} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-lg hover:bg-green-600 shadow-sm">Hire</button>
+                              </div>
+                            )}
+                            {app.status === 'approved' && (
+                              app.payment_status === 'paid' ? (
+                                <div><span className="text-green-600 font-bold text-sm block">✓ Paid</span><span className="text-xs text-slate-400 font-medium">{app.payment_method}</span></div>
+                              ) : (
+                                <button onClick={() => handleMarkPaid(app.id)} className="px-4 py-2 text-xs font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-700 shadow-sm">Mark Paid</button>
+                              )
+                            )}
+                            {app.status === 'rejected' && <span className="text-red-400 font-bold text-sm">✕ Declined</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            ))
+          )}
+        </div>
+
+      </div>
+    </div>
+  )
+}
