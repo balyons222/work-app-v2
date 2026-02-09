@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, Suspense } from 'react'
-import { createClient } from '../../utils/supabase/client'
+import { createClient } from '@/src/utils/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
@@ -24,27 +24,37 @@ function LoginContent() {
     try {
       if (mode === 'signup') {
         // --- SIGN UP LOGIC ---
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            // Fixes "window is undefined" error on server
             emailRedirectTo: `${window.location.origin}/auth/callback`,
           },
         })
+
         if (error) throw error
-        toast.success('Check your email to confirm account!')
+
+        // ✅ FIX 1: IMMEDIATE LOGIN (If Email Confirm is OFF)
+        if (data.session) {
+          toast.success('Account created!')
+          checkProfileAndRedirect(data.user?.id!)
+        } else {
+          // If session is null, it means Confirmation is ON
+          toast.success('Check your email to confirm account!')
+          setLoading(false) 
+        }
+
       } else {
         // --- LOG IN LOGIC ---
-        const { data: { user }, error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         })
         if (error) throw error
 
-        if (user) {
+        if (data.user) {
           toast.success('Welcome back!')
-          checkProfileAndRedirect(user.id)
+          checkProfileAndRedirect(data.user.id)
         }
       }
     } catch (error: any) {
@@ -61,24 +71,26 @@ function LoginContent() {
         .from('profiles')
         .select('role, full_name')
         .eq('id', userId)
-        .maybeSingle() // 'maybeSingle' avoids errors if no row exists
+        .maybeSingle()
 
+      // ✅ FIX 2: STRICT ROLE CHECK
       if (profile && profile.full_name) {
-        // ✅ Profile Exists -> Go to their hub
         if (profile.role === 'contractor') {
           router.push('/jobs')
-        } else {
+        } else if (profile.role === 'organizer') {
           router.push('/dashboard')
+        } else {
+          // ❌ Profile exists but Role is missing/broken -> Fix it in Setup
+          router.push('/setup-profile')
         }
       } else {
-        // ❌ No Profile -> Go to Setup
+        // ❌ No Profile found -> Go to Setup
         router.push('/setup-profile')
       }
     } catch (err) {
-      // Fallback if DB check fails
-      router.push('/dashboard')
+      // Fallback if DB check fails -> Safer to send to setup
+      router.push('/setup-profile')
     } finally {
-      // We don't set loading false here because we are navigating away
       router.refresh()
     }
   }
