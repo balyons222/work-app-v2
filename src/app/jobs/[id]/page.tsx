@@ -5,6 +5,8 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+// ✅ 1. IMPORT NOTIFICATIONS
+import { sendNotification } from '@/src/utils/notifications'
 
 export default function JobDetailsPage() {
   const [job, setJob] = useState<any>(null)
@@ -29,6 +31,7 @@ export default function JobDetailsPage() {
 
     const { data: jobData, error } = await supabase
       .from('jobs')
+      // ✅ Fetch organizer_id just in case it's needed for notifications
       .select(`*, events (title, location, event_date, website, description)`)
       .eq('id', jobId)
       .single()
@@ -60,13 +63,14 @@ export default function JobDetailsPage() {
       return
     }
 
-    // ✅ Enforce Agreement Logic
+    // ✅ Enforce Agreement Logic (PRESERVED)
     if (!agreed) {
       toast.error('You must agree to the job terms to apply.')
       return
     }
 
     const toastId = toast.loading('Sending application...')
+    
     const { error } = await supabase.from('applications').insert({
       job_id: jobId,
       applicant_id: currentUser.id,
@@ -78,6 +82,17 @@ export default function JobDetailsPage() {
     } else {
       toast.success('Application Sent!', { id: toastId })
       setAppStatus('pending')
+
+      // ✅ 2. SEND NOTIFICATION TO ORGANIZER
+      if (job?.organizer_id) {
+        await sendNotification({
+          userId: job.organizer_id,
+          title: "New Applicant 📝",
+          message: `Someone just applied for "${job.title}". Review their profile now.`,
+          link: `/dashboard/event/${job.event_id}`, 
+          type: "info"
+        })
+      }
     }
   }
 
@@ -144,7 +159,7 @@ export default function JobDetailsPage() {
 
               <div className="pt-8 border-t border-slate-200 mt-8">
                 
-                {/* ✅ CHECKBOX IS CORRECTLY PLACED HERE INSIDE THE RENDER AREA */}
+                {/* ✅ CHECKBOX IS PRESERVED HERE */}
                 {!appStatus && (
                   <div className="mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                     <label className="flex items-start gap-3 cursor-pointer select-none">
