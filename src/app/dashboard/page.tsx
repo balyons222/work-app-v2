@@ -143,7 +143,7 @@ function DashboardContent() {
               )}
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 italic">Stay FxD, {profile?.full_name || 'Member'}</h1>
+              <h1 className="text-2xl font-bold text-gray-900 italic">Work FxD, {profile?.full_name || 'Member'}</h1>
               <p className="text-sm text-gray-500 capitalize">{profile?.role} • {profile?.location || 'Location not set'}</p>
             </div>
           </div>
