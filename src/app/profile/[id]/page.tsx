@@ -11,6 +11,9 @@ export default function ProfilePage() {
   const [reviews, setReviews] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<any>(null)
+  
+  // ✅ NEW: Control how many reviews are visible (Default 3)
+  const [visibleCount, setVisibleCount] = useState(3)
 
   const supabase = createClient()
   const params = useParams()
@@ -39,7 +42,7 @@ export default function ProfilePage() {
     }
     setProfile(data)
 
-    // 2. Fetch Reviews (Only show 'published' or 'flagged', hide 'removed')
+    // 2. Fetch Reviews
     const { data: reviewsData } = await supabase
       .from('reviews')
       .select(`
@@ -47,14 +50,14 @@ export default function ProfilePage() {
         reviewer:profiles!reviewer_id ( full_name, avatar_url, role )
       `)
       .eq('reviewee_id', userId)
-      .neq('status', 'removed') // Don't show deleted reviews
+      .neq('status', 'removed') 
       .order('created_at', { ascending: false })
 
     setReviews(reviewsData || [])
     setLoading(false)
   }
 
-  // ✅ HANDLE REPORT
+  // ✅ HANDLE REPORT (Preserved)
   const handleReport = async (reviewId: string) => {
     const reason = prompt("Why are you reporting this review? (e.g. Spam, Harassment, Fake)")
     if (!reason) return
@@ -90,7 +93,7 @@ export default function ProfilePage() {
           ← Back to Dashboard
         </Link>
 
-        {/* 1. PROFILE HEADER CARD */}
+        {/* 1. PROFILE HEADER CARD (Preserved) */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-8">
           <div className="h-32 bg-gradient-to-r from-slate-900 to-slate-800"></div>
           <div className="px-8 pb-8">
@@ -139,7 +142,7 @@ export default function ProfilePage() {
         {/* 2. REPUTATION & REVIEWS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           
-          {/* A. SCORE CARD */}
+          {/* A. SCORE CARD (Preserved) */}
           <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm text-center h-fit">
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Reputation Score</h3>
             <div className="text-5xl font-black text-slate-900 mb-2">{averageRating}</div>
@@ -151,7 +154,7 @@ export default function ProfilePage() {
             <p className="text-xs font-bold text-slate-400 uppercase">{reviews.length} Verified Reviews</p>
           </div>
 
-          {/* B. REVIEWS LIST */}
+          {/* B. REVIEWS LIST (Updated with Logic) */}
           <div className="md:col-span-2 space-y-6">
             <h3 className="text-xl font-black text-slate-900">Recent Feedback</h3>
             
@@ -160,57 +163,70 @@ export default function ProfilePage() {
                 No reviews yet. Hire this person to be the first!
               </div>
             ) : (
-              reviews.map((review) => (
-                <div key={review.id} className="relative bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:border-secondary/30 transition-all group">
-                  
-                  {/* ✅ REPORT BUTTON (Only show if not already flagged) */}
-                  {review.status !== 'flagged' && currentUser && (
-                    <button 
-                      onClick={() => handleReport(review.id)}
-                      className="absolute top-4 right-4 text-xs text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Report this review"
-                    >
-                      🏳️ Report
-                    </button>
-                  )}
-                  {review.status === 'flagged' && (
-                    <span className="absolute top-4 right-4 text-[10px] font-bold text-red-400 bg-red-50 px-2 py-1 rounded">
-                      ⚠️ Under Review
-                    </span>
-                  )}
+              <>
+                {/* ✅ MAP ONLY VISIBLE REVIEWS (using slice) */}
+                {reviews.slice(0, visibleCount).map((review) => (
+                  <div key={review.id} className="relative bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:border-secondary/30 transition-all group">
+                    
+                    {/* Report Button */}
+                    {review.status !== 'flagged' && currentUser && (
+                      <button 
+                        onClick={() => handleReport(review.id)}
+                        className="absolute top-4 right-4 text-xs text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Report this review"
+                      >
+                        🏳️ Report
+                      </button>
+                    )}
+                    {review.status === 'flagged' && (
+                      <span className="absolute top-4 right-4 text-[10px] font-bold text-red-400 bg-red-50 px-2 py-1 rounded">
+                        ⚠️ Under Review
+                      </span>
+                    )}
 
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-slate-100 overflow-hidden">
-                        {review.reviewer?.avatar_url ? (
-                          <img src={review.reviewer.avatar_url} className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="h-full w-full flex items-center justify-center font-bold text-slate-400 text-xs">
-                            {review.reviewer?.full_name?.charAt(0)}
-                          </div>
-                        )}
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-slate-100 overflow-hidden">
+                          {review.reviewer?.avatar_url ? (
+                            <img src={review.reviewer.avatar_url} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center font-bold text-slate-400 text-xs">
+                              {review.reviewer?.full_name?.charAt(0)}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-900 text-sm">{review.reviewer?.full_name || 'Anonymous User'}</p>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold">{review.reviewer?.role || 'Member'}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-bold text-slate-900 text-sm">{review.reviewer?.full_name || 'Anonymous User'}</p>
-                        <p className="text-[10px] text-slate-400 uppercase font-bold">{review.reviewer?.role || 'Member'}</p>
+                      <div className="flex text-yellow-400 text-sm">
+                        {[...Array(5)].map((_, i) => (
+                           <span key={i} className={i < review.rating ? "text-yellow-400" : "text-slate-200"}>★</span>
+                        ))}
                       </div>
                     </div>
-                    <div className="flex text-yellow-400 text-sm">
-                      {[...Array(5)].map((_, i) => (
-                         <span key={i} className={i < review.rating ? "text-yellow-400" : "text-slate-200"}>★</span>
-                      ))}
-                    </div>
+                    
+                    {review.comment && (
+                      <p className="text-slate-600 text-sm leading-relaxed">"{review.comment}"</p>
+                    )}
+                    
+                    <p className="text-[10px] text-slate-300 font-bold uppercase mt-4 text-right">
+                      {new Date(review.created_at).toLocaleDateString()}
+                    </p>
                   </div>
-                  
-                  {review.comment && (
-                    <p className="text-slate-600 text-sm leading-relaxed">"{review.comment}"</p>
-                  )}
-                  
-                  <p className="text-[10px] text-slate-300 font-bold uppercase mt-4 text-right">
-                    {new Date(review.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-              ))
+                ))}
+
+                {/* ✅ SHOW MORE BUTTON */}
+                {visibleCount < reviews.length && (
+                  <button 
+                    onClick={() => setVisibleCount(prev => prev + 5)}
+                    className="w-full py-3 text-sm font-bold text-slate-500 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"
+                  >
+                    Show More Reviews ({reviews.length - visibleCount} remaining)
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
