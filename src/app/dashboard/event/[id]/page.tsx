@@ -5,7 +5,6 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-// ✅ 1. ADD THIS IMPORT
 import { sendNotification } from '@/src/utils/notifications'
 
 // 🛠️ SHARED ROLES
@@ -26,13 +25,18 @@ export default function EventManagerPage() {
 
   const [selectedRole, setSelectedRole] = useState('')
   const [rate, setRate] = useState('')
-  // 🆕 NEW: Rate Type & Hours
-  const [rateType, setRateType] = useState('flat') // 'flat' or 'hourly'
+  const [rateType, setRateType] = useState('flat')
   const [estimatedHours, setEstimatedHours] = useState('') 
 
   const [jobDescription, setJobDescription] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+
+  // ✅ REVIEW STATE
+  const [reviewModalOpen, setReviewModalOpen] = useState(false)
+  const [reviewTarget, setReviewTarget] = useState<any>(null) 
+  const [rating, setRating] = useState(5)
+  const [comment, setComment] = useState('')
 
   const supabase = createClient()
   const params = useParams()
@@ -57,6 +61,7 @@ export default function EventManagerPage() {
     }
     setEvent(eventData)
 
+    // ✅ UPDATED QUERY: Fetch 'reviews' so we can check if they exist
     const { data: jobsData } = await supabase
       .from('jobs')
       .select(`
@@ -64,7 +69,8 @@ export default function EventManagerPage() {
         applications (
           id, status, applicant_id, payment_status, payment_method,
           profiles ( full_name, avatar_url, role )
-        )
+        ),
+        reviews (id, reviewee_id, rating) 
       `)
       .eq('event_id', eventId)
       .order('created_at', { ascending: false })
@@ -81,8 +87,6 @@ export default function EventManagerPage() {
     setJobDescription(job.description || '')
     setStartDate(job.start_date)
     setEndDate(job.end_date)
-    
-    // 🆕 Load New Fields
     setRateType(job.rate_type || 'flat')
     setEstimatedHours(job.estimated_hours ? job.estimated_hours.toString() : '')
 
@@ -97,7 +101,6 @@ export default function EventManagerPage() {
     setJobDescription('')
     setStartDate('')
     setEndDate('')
-    // 🆕 Reset New Fields
     setRateType('flat')
     setEstimatedHours('')
     setShowJobForm(false)
@@ -118,7 +121,6 @@ export default function EventManagerPage() {
       start_date: startDate,
       end_date: endDate,
       status: 'open',
-      // 🆕 Save New Fields
       rate_type: rateType,
       estimated_hours: rateType === 'hourly' ? parseFloat(estimatedHours) : 0
     }
@@ -142,23 +144,19 @@ export default function EventManagerPage() {
     }
   }
 
-// ✅ 2. UPDATED STATUS FUNCTION WITH FIX
   const handleAppStatus = async (appId: string, newStatus: string) => {
     const { error } = await supabase.from('applications').update({ status: newStatus }).eq('id', appId)
     
     if (!error) {
       toast.success(`Applicant ${newStatus}`)
       
-      // -- START NOTIFICATION LOGIC --
       if (newStatus === 'approved') {
-        // 👇 1. Rename this to 'rawData'
         const { data: rawData } = await supabase
           .from('applications')
           .select('applicant_id, jobs(title, events(title))')
           .eq('id', appId)
           .single()
 
-        // 👇 2. Cast it to 'any' to fix the red squiggles
         const appData = rawData as any
 
         if (appData) {
@@ -171,8 +169,6 @@ export default function EventManagerPage() {
           })
         }
       }
-      // -- END NOTIFICATION LOGIC --
-
       loadEventData() 
     } else {
       toast.error('Update failed')
@@ -198,12 +194,54 @@ export default function EventManagerPage() {
     }
   }
 
+  // ✅ REVIEW LOGIC HANDLERS
+  const openReviewModal = (app: any, job: any) => {
+    setReviewTarget({
+      appId: app.id,
+      userId: app.applicant_id,
+      name: app.profiles?.full_name,
+      jobId: job.id
+    })
+    setRating(5)
+    setComment('')
+    setReviewModalOpen(true)
+  }
+
+  const submitReview = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { error } = await supabase.from('reviews').insert({
+      reviewer_id: user.id,
+      reviewee_id: reviewTarget.userId,
+      job_id: reviewTarget.jobId,
+      rating: rating,
+      comment: comment
+    })
+
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success('Review Submitted!')
+      
+      await sendNotification({
+        userId: reviewTarget.userId,
+        title: "New Review! ⭐",
+        message: `You received a ${rating}-star review from your last event. Check your profile!`,
+        link: `/profile/${reviewTarget.userId}`,
+        type: "success"
+      })
+
+      setReviewModalOpen(false)
+      loadEventData()
+    }
+  }
+
   if (loading) return <div className="p-20 text-center">Loading Event...</div>
 
-  // 🆕 SMART BUDGET CALCULATION
+  // SMART BUDGET CALCULATION
   const totalBudget = event?.budget || 0
   const allocatedBudget = jobs.reduce((sum, job) => {
-    // If Hourly: Rate * Est Hours. If Flat: Rate.
     const jobCost = job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate
     return sum + (jobCost || 0)
   }, 0)
@@ -275,7 +313,6 @@ export default function EventManagerPage() {
                   </select>
                 </div>
                 
-                {/* 🆕 RATE TYPE & AMOUNT */}
                 <div className="flex gap-4">
                    <div className="w-1/2">
                       <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Pay Type</label>
@@ -294,7 +331,6 @@ export default function EventManagerPage() {
                    </div>
                 </div>
 
-                {/* 🆕 ESTIMATED HOURS (Only if Hourly) */}
                 {rateType === 'hourly' && (
                   <div className="md:col-span-2 bg-yellow-50 p-4 rounded-xl border border-yellow-100 flex items-center gap-4">
                     <div className="flex-1">
@@ -370,43 +406,57 @@ export default function EventManagerPage() {
                     <p className="text-slate-400 text-sm italic">Waiting for applicants...</p>
                   ) : (
                     <div className="space-y-3">
-                      {job.applications.map((app: any) => (
-                        <div key={app.id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-secondary transition-colors">
-                          <div className="flex items-center gap-3">
-                            <Link href={`/profile/${app.applicant_id}`} className="h-10 w-10 bg-slate-200 rounded-full overflow-hidden block">
-                              {app.profiles?.avatar_url ? (
-                                <img src={app.profiles.avatar_url} className="h-full w-full object-cover" />
-                              ) : (
-                                <div className="h-full w-full flex items-center justify-center font-bold text-slate-400">
-                                  {app.profiles?.full_name?.charAt(0)}
+                      {job.applications.map((app: any) => {
+                        // ✅ CHECK IF THIS USER HAS A REVIEW
+                        const hasReview = job.reviews?.some((r: any) => r.reviewee_id === app.applicant_id)
+
+                        return (
+                          <div key={app.id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-secondary transition-colors">
+                            <div className="flex items-center gap-3">
+                              <Link href={`/profile/${app.applicant_id}`} className="h-10 w-10 bg-slate-200 rounded-full overflow-hidden block">
+                                {app.profiles?.avatar_url ? (
+                                  <img src={app.profiles.avatar_url} className="h-full w-full object-cover" />
+                                ) : (
+                                  <div className="h-full w-full flex items-center justify-center font-bold text-slate-400">
+                                    {app.profiles?.full_name?.charAt(0)}
+                                  </div>
+                                )}
+                              </Link>
+                              <div>
+                                <Link href={`/profile/${app.applicant_id}`} className="font-bold text-primary hover:underline">
+                                  {app.profiles?.full_name || 'Unknown User'}
+                                </Link>
+                                <p className="text-xs text-slate-400 uppercase font-bold">{app.status}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              {app.status === 'pending' && (
+                                <div className="flex gap-2">
+                                  <button onClick={() => handleAppStatus(app.id, 'rejected')} className="px-3 py-1 text-xs font-bold text-red-500 bg-red-50 rounded-lg hover:bg-red-100">Decline</button>
+                                  <button onClick={() => handleAppStatus(app.id, 'approved')} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-lg hover:bg-green-600 shadow-sm">Hire</button>
                                 </div>
                               )}
-                            </Link>
-                            <div>
-                              <Link href={`/profile/${app.applicant_id}`} className="font-bold text-primary hover:underline">
-                                {app.profiles?.full_name || 'Unknown User'}
-                              </Link>
-                              <p className="text-xs text-slate-400 uppercase font-bold">{app.status}</p>
+                              {app.status === 'approved' && (
+                                app.payment_status === 'paid' ? (
+                                  <div className="flex items-center gap-4">
+                                    <div><span className="text-green-600 font-bold text-sm block">✓ Paid</span><span className="text-xs text-slate-400 font-medium">{app.payment_method}</span></div>
+                                    
+                                    {/* ✅ REVIEW BUTTON / BADGE */}
+                                    {hasReview ? (
+                                      <span className="text-xs font-bold text-yellow-500 bg-yellow-50 px-2 py-1 rounded">⭐ Reviewed</span>
+                                    ) : (
+                                      <button onClick={() => openReviewModal(app, job)} className="px-3 py-1 text-xs font-bold text-secondary bg-teal-50 border border-teal-100 rounded-lg hover:bg-teal-100">Leave Review</button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <button onClick={() => handleMarkPaid(app.id)} className="px-4 py-2 text-xs font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-700 shadow-sm">Mark Paid</button>
+                                )
+                              )}
+                              {app.status === 'rejected' && <span className="text-red-400 font-bold text-sm">✕ Declined</span>}
                             </div>
                           </div>
-                          <div className="text-right">
-                            {app.status === 'pending' && (
-                              <div className="flex gap-2">
-                                <button onClick={() => handleAppStatus(app.id, 'rejected')} className="px-3 py-1 text-xs font-bold text-red-500 bg-red-50 rounded-lg hover:bg-red-100">Decline</button>
-                                <button onClick={() => handleAppStatus(app.id, 'approved')} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-lg hover:bg-green-600 shadow-sm">Hire</button>
-                              </div>
-                            )}
-                            {app.status === 'approved' && (
-                              app.payment_status === 'paid' ? (
-                                <div><span className="text-green-600 font-bold text-sm block">✓ Paid</span><span className="text-xs text-slate-400 font-medium">{app.payment_method}</span></div>
-                              ) : (
-                                <button onClick={() => handleMarkPaid(app.id)} className="px-4 py-2 text-xs font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-700 shadow-sm">Mark Paid</button>
-                              )
-                            )}
-                            {app.status === 'rejected' && <span className="text-red-400 font-bold text-sm">✕ Declined</span>}
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -417,6 +467,41 @@ export default function EventManagerPage() {
         </div>
 
       </div>
+
+      {/* ✅ REVIEW MODAL */}
+      {reviewModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full animate-in fade-in zoom-in-95">
+            <h3 className="text-2xl font-black text-primary mb-2">Review {reviewTarget?.name}</h3>
+            <p className="text-slate-500 text-sm mb-6">How was their performance on this job?</p>
+            
+            <div className="flex justify-center gap-2 mb-6">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button 
+                  key={star} 
+                  onClick={() => setRating(star)} 
+                  className={`text-4xl transition-transform hover:scale-110 ${rating >= star ? 'text-yellow-400' : 'text-slate-200'}`}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+
+            <textarea 
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Write a brief comment (optional)..."
+              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl h-32 mb-6 outline-none focus:ring-2 focus:ring-secondary"
+            />
+
+            <div className="flex gap-4">
+              <button onClick={() => setReviewModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Cancel</button>
+              <button onClick={submitReview} className="flex-1 py-3 bg-secondary text-white font-bold rounded-xl hover:bg-teal-600 shadow-lg">Submit Review</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
