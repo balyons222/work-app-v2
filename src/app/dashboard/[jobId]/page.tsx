@@ -81,7 +81,7 @@ export default function JobDetailsPage() {
               </Link>
               <h1 className="text-3xl font-bold text-gray-900 mt-1">{job.title}</h1>
               {job.events && (
-                <span className="inline-block bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded mt-2 uppercase tracking-wide font-bold">
+                <span className="inline-block bg-teal-50 text-secondary text-xs px-2 py-1 rounded mt-2 uppercase tracking-wide font-bold">
                   {job.events.title}
                 </span>
               )}
@@ -135,7 +135,7 @@ export default function JobDetailsPage() {
                     className={`text-sm font-bold py-1 px-3 rounded border cursor-pointer outline-none ${
                         app.status === 'hired' ? 'bg-green-50 text-green-700 border-green-200' :
                         app.status === 'rejected' ? 'bg-red-50 text-red-600 border-red-200' :
-                        app.status === 'contacted' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                        app.status === 'contacted' ? 'bg-teal-50 text-secondary border-blue-200' :
                         'bg-yellow-50 text-yellow-700 border-yellow-200'
                     }`}
                   >
@@ -157,7 +157,7 @@ export default function JobDetailsPage() {
                         organizerId: user.id
                       })
                     }}
-                    className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
+                    className="text-xs font-bold text-secondary bg-teal-50 border border-blue-200 px-3 py-1.5 rounded hover:bg-teal-100 transition-colors flex items-center gap-1"
                   >
                     💬 Message
                   </button>

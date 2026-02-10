@@ -1,60 +1,42 @@
 'use client'
-
 import { useEffect, useState } from 'react'
-import { createClient } from '@/src/utils/supabase/client'
+import { createClient } from '../utils/supabase/client'
 
-interface StarRatingProps {
-  userId: string
-  showCount?: boolean   // Option to hide the "(12)" count
-  size?: 'sm' | 'lg'    // Option for big profile stars or small list stars
-}
-
-export default function StarRating({ userId, showCount = true, size = 'sm' }: StarRatingProps) {
-  const [average, setAverage] = useState(0)
+export default function StarRating({ userId, readOnly = true }: { userId: string, readOnly?: boolean }) {
+  const [rating, setRating] = useState(0)
   const [count, setCount] = useState(0)
-  const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
   useEffect(() => {
     async function fetchRating() {
-      if (!userId) return
-
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('reviews')
         .select('rating')
         .eq('target_id', userId)
 
       if (data && data.length > 0) {
-        const total = data.reduce((acc, curr) => acc + curr.rating, 0)
-        setAverage(total / data.length)
+        // Calculate Average
+        const avg = data.reduce((acc, curr) => acc + curr.rating, 0) / data.length
+        setRating(avg)
         setCount(data.length)
       }
-      setLoading(false)
     }
-
     fetchRating()
   }, [userId])
 
-  if (loading) return <div className="animate-pulse bg-gray-200 h-4 w-16 rounded"></div>
-
-  // If no reviews yet
-  if (count === 0) return <span className="text-xs text-gray-400">No reviews yet</span>
-
   return (
     <div className="flex items-center gap-1">
-      <div className="flex text-yellow-400">
+      <div className="flex text-yellow-400 text-lg leading-none">
         {[1, 2, 3, 4, 5].map((star) => (
-          <span key={star} className={size === 'lg' ? 'text-xl' : 'text-sm'}>
-            {/* Logic: Show filled star if average is greater than this star index */}
-            {average >= star ? '★' : average >= star - 0.5 ? '⭐️' : '☆'} 
+          <span key={star}>
+            {/* Render filled star if rating is high enough, else empty star */}
+            {star <= Math.round(rating) ? '★' : '☆'}
           </span>
         ))}
       </div>
-      {showCount && (
-        <span className={`text-gray-500 ${size === 'lg' ? 'text-sm' : 'text-xs'}`}>
-          ({count})
-        </span>
-      )}
+      <span className="text-xs text-slate-400 font-bold ml-1 pt-0.5">
+        ({count} {count === 1 ? 'review' : 'reviews'})
+      </span>
     </div>
   )
 }

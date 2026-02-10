@@ -64,7 +64,7 @@ export default function MyApplications() {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                      {app.jobs?.events?.title && (
-                        <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded uppercase tracking-wide">
+                        <span className="text-xs font-bold text-primary bg-slate-50 px-2 py-0.5 rounded uppercase tracking-wide">
                           {app.jobs.events.title}
                         </span>
                      )}
@@ -93,7 +93,7 @@ export default function MyApplications() {
                             organizerId: app.jobs.employer_id
                         })
                     }}
-                    className="mt-3 text-sm font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
+                    className="mt-3 text-sm font-bold text-primary hover:text-blue-800 flex items-center gap-1 transition-colors"
                   >
                     💬 Message Organizer
                   </button>
@@ -104,7 +104,7 @@ export default function MyApplications() {
                   <span className={`px-4 py-2 rounded-full text-sm font-bold border ${
                     app.status === 'hired' ? 'bg-green-100 text-green-700 border-green-200' :
                     app.status === 'rejected' ? 'bg-red-50 text-red-600 border-red-200' :
-                    app.status === 'contacted' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                    app.status === 'contacted' ? 'bg-slate-50 text-primary border-blue-200' :
                     'bg-yellow-50 text-yellow-700 border-yellow-200'
                   }`}>
                     {app.status === 'hired' ? '🎉 Hired' : 

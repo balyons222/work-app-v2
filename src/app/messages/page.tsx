@@ -143,7 +143,7 @@ function ChatContent() {
               key={chat.id}
               onClick={() => setActiveChat(chat.id)}
               className={`w-full text-left p-4 hover:bg-gray-50 border-b border-gray-50 transition-colors ${
-                activeChat === chat.id ? 'bg-blue-50 border-blue-100' : ''
+                activeChat === chat.id ? 'bg-teal-50 border-slate-100' : ''
               }`}
             >
               <p className="font-bold text-gray-900">{getChatName(chat)}</p>
@@ -169,7 +169,7 @@ function ChatContent() {
                 return (
                   <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[70%] px-4 py-2 rounded-xl text-sm ${
-                      isMe ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'
+                      isMe ? 'bg-secondary text-white' : 'bg-gray-200 text-gray-800'
                     }`}>
                       {msg.content}
                     </div>
@@ -191,7 +191,7 @@ function ChatContent() {
                 />
                 <button 
                   type="submit"
-                  className="bg-blue-600 text-white font-bold px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                  className="bg-secondary text-white font-bold px-6 py-2 rounded-lg hover:bg-teal-700 transition-colors"
                 >
                   Send
                 </button>
