@@ -39,8 +39,7 @@ export default function ProfilePage() {
     }
     setProfile(data)
 
-    // 2. Fetch Reviews Received
-    // We join 'profiles' on reviewer_id to get the NAME of the person who wrote it
+    // 2. Fetch Reviews (Only show 'published' or 'flagged', hide 'removed')
     const { data: reviewsData } = await supabase
       .from('reviews')
       .select(`
@@ -48,10 +47,31 @@ export default function ProfilePage() {
         reviewer:profiles!reviewer_id ( full_name, avatar_url, role )
       `)
       .eq('reviewee_id', userId)
+      .neq('status', 'removed') // Don't show deleted reviews
       .order('created_at', { ascending: false })
 
     setReviews(reviewsData || [])
     setLoading(false)
+  }
+
+  // ✅ HANDLE REPORT
+  const handleReport = async (reviewId: string) => {
+    const reason = prompt("Why are you reporting this review? (e.g. Spam, Harassment, Fake)")
+    if (!reason) return
+
+    const { error } = await supabase
+      .from('reviews')
+      .update({ 
+        status: 'flagged',
+        report_reason: reason 
+      })
+      .eq('id', reviewId)
+
+    if (error) {
+      toast.error("Could not report review.")
+    } else {
+      toast.success("Review flagged for admin attention.")
+    }
   }
 
   // Calculate Average Rating
@@ -85,7 +105,6 @@ export default function ProfilePage() {
                 </div>
               </div>
               
-              {/* If viewing own profile, show Edit button */}
               {currentUser?.id === userId && (
                 <Link href="/setup-profile" className="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-200 transition-all">
                   Edit Profile
@@ -142,7 +161,24 @@ export default function ProfilePage() {
               </div>
             ) : (
               reviews.map((review) => (
-                <div key={review.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:border-secondary/30 transition-all">
+                <div key={review.id} className="relative bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:border-secondary/30 transition-all group">
+                  
+                  {/* ✅ REPORT BUTTON (Only show if not already flagged) */}
+                  {review.status !== 'flagged' && currentUser && (
+                    <button 
+                      onClick={() => handleReport(review.id)}
+                      className="absolute top-4 right-4 text-xs text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Report this review"
+                    >
+                      🏳️ Report
+                    </button>
+                  )}
+                  {review.status === 'flagged' && (
+                    <span className="absolute top-4 right-4 text-[10px] font-bold text-red-400 bg-red-50 px-2 py-1 rounded">
+                      ⚠️ Under Review
+                    </span>
+                  )}
+
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 rounded-full bg-slate-100 overflow-hidden">
@@ -177,9 +213,7 @@ export default function ProfilePage() {
               ))
             )}
           </div>
-
         </div>
-
       </div>
     </div>
   )
