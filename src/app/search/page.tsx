@@ -105,7 +105,7 @@ function SearchContent() {
         {/* Header & Search Bar */}
         <div className="mb-10 text-center">
           <h1 className="text-3xl font-black text-primary mb-4">Find Top Talent</h1>
-          <p className="text-slate-500 mb-8">Search by name, role, or location (e.g. "Audio", "Austin", "Rigger")</p>
+          <p className="text-slate-500 mb-8">Search by name, role, or location (e.g. "Jones", "Denver", "Site")</p>
           
           <div className="max-w-xl mx-auto relative">
             <input 
