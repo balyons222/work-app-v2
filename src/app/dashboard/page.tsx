@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { sendNotification } from '@/src/utils/notifications'
+import TermsModal from '@/src/components/TermsModal'
 
 function DashboardContent() {
   const [profile, setProfile] = useState<any>(null)
@@ -17,6 +18,9 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   
+  // Terms of Service State
+  const [showTerms, setShowTerms] = useState(false)
+
   // Event Form State (Organizer)
   const [title, setTitle] = useState('')
   const [location, setLocation] = useState('')
@@ -27,7 +31,7 @@ function DashboardContent() {
   const [pocName, setPocName] = useState('')
   const [pocPhone, setPocPhone] = useState('')
 
-  // ✅ REVIEW STATE
+  // Review State
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
   const [reviewTarget, setReviewTarget] = useState<any>(null) // { jobId, organizerId, eventName }
   const [rating, setRating] = useState(5)
@@ -71,7 +75,6 @@ function DashboardContent() {
 
       // 3. CONTRACTOR DATA FETCH
       if (profileData?.role === 'contractor') {
-        // ✅ Updated Query: Fetch reviews to check if we reviewed them already
         const { data: appsData } = await supabase
           .from('applications')
           .select(`
@@ -98,6 +101,15 @@ function DashboardContent() {
     }
   }
 
+  const handleCreateEventClick = () => {
+    // Check if terms are accepted before showing form
+    if (!profile?.accepted_tos_at) {
+      setShowTerms(true)
+      return
+    }
+    setIsCreating(!isCreating)
+  }
+
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault()
     const { data: { user } } = await supabase.auth.getUser()
@@ -119,7 +131,7 @@ function DashboardContent() {
     }
   }
 
-  // ✅ REVIEW SUBMISSION LOGIC
+  // REVIEW SUBMISSION LOGIC
   const openReviewModal = (job: any) => {
     setReviewTarget({
       jobId: job.id,
@@ -153,7 +165,7 @@ function DashboardContent() {
         userId: reviewTarget.organizerId,
         title: "New Review! ⭐",
         message: `A worker left you a ${rating}-star review for ${reviewTarget.eventName}.`,
-        link: `/dashboard`, // Or profile link
+        link: `/dashboard`, 
         type: "success"
       })
 
@@ -176,7 +188,7 @@ function DashboardContent() {
   )
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8 relative">
       <div className="max-w-6xl mx-auto">
         
         {/* SHARED HEADER */}
@@ -352,7 +364,7 @@ function DashboardContent() {
                 <p className="text-gray-500">Manage your events and hiring budget.</p>
               </div>
               <button 
-                onClick={() => setIsCreating(!isCreating)}
+                onClick={handleCreateEventClick}
                 className="bg-black text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-800 transition-colors"
               >
                 {isCreating ? 'Cancel' : '+ Add Event'}
@@ -375,7 +387,6 @@ function DashboardContent() {
                     <input type="number" placeholder="$ 0.00" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={budget} onChange={e => setBudget(e.target.value)} required />
                   </div>
 
-                  {/* ✅ NEW: SITE LEAD CONTACT */}
                   <div className="md:col-span-2 bg-slate-50 p-4 rounded-lg border border-slate-100">
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">On-Site Point of Contact (Visible to Hired Crew Only)</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -423,7 +434,7 @@ function DashboardContent() {
         )}
       </div>
 
-      {/* ✅ REVIEW MODAL (CONTRACTOR SIDE) */}
+      {/* REVIEW MODAL (CONTRACTOR SIDE) */}
       {reviewModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full animate-in fade-in zoom-in-95">
@@ -455,6 +466,21 @@ function DashboardContent() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* TERMS MODAL */}
+      {showTerms && profile && (
+        <TermsModal 
+          userId={profile.id} 
+          onClose={() => setShowTerms(false)}
+          onAccept={() => {
+            setProfile({ ...profile, accepted_tos_at: new Date().toISOString() })
+            setShowTerms(false)
+            toast.success("Terms accepted. You can now create events.")
+            // Automatically open the form after acceptance
+            setIsCreating(true)
+          }}
+        />
       )}
     </div>
   )
