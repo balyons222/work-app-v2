@@ -6,9 +6,12 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 function SearchContent() {
-  const [allProfiles, setAllProfiles] = useState<any[]>([]) // Stores everyone fetched
-  const [filteredProfiles, setFilteredProfiles] = useState<any[]>([]) // Stores search results
-  const [visibleCount, setVisibleCount] = useState(12) // ✅ NEW: For "Roll Up" pagination
+  const [allProfiles, setAllProfiles] = useState<any[]>([]) 
+  const [filteredProfiles, setFilteredProfiles] = useState<any[]>([])
+  
+  // ✅ FIX 1: Set limit to 6 initially so you can see it working easily
+  const ITEMS_PER_PAGE = 6
+  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE)
   
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
@@ -19,20 +22,19 @@ function SearchContent() {
   useEffect(() => {
     const initialQuery = searchParams.get('q')
     if (initialQuery) setSearchTerm(initialQuery)
-    
     fetchContractors(initialQuery || '')
   }, [searchParams])
 
   async function fetchContractors(query: string = '') {
     setLoading(true)
     
-    // 1. Fetch ALL contractors + Reviews for Rating
+    // 1. Fetch Data
     const { data, error } = await supabase
       .from('profiles')
       .select(`
         *,
         reviews!reviewee_id (rating)
-      `) // ✅ NEW: Fetch ratings
+      `) 
       .eq('role', 'contractor')
     
     if (error) {
@@ -41,46 +43,33 @@ function SearchContent() {
       return
     }
 
-    // 2. Calculate Average Rating & Sort
+    // 2. Process Ratings
     const profilesWithRating = data?.map(p => {
       const ratings = p.reviews?.map((r: any) => r.rating) || []
       const avg = ratings.length > 0 ? ratings.reduce((a: number, b: number) => a + b, 0) / ratings.length : 0
-      return { 
-        ...p, 
-        avgRating: avg, 
-        reviewCount: ratings.length 
-      }
+      return { ...p, avgRating: avg, reviewCount: ratings.length }
     }) || []
 
-    // ✅ SORT: Highest Rated First
+    // 3. Sort & Set
     const sortedProfiles = profilesWithRating.sort((a, b) => b.avgRating - a.avgRating)
-
     setAllProfiles(sortedProfiles)
 
-    // 3. Apply Initial Filter
+    // 4. Apply Filter
     applyFilter(sortedProfiles, query)
     setLoading(false)
   }
 
-  // ✅ Extracted Filter Logic (So we can reuse it)
   const applyFilter = (data: any[], query: string) => {
     const lowerQuery = query.toLowerCase()
     
     const results = data.filter(profile => {
       if (!lowerQuery) return true 
-
-      // Check Name
       const nameMatch = profile.full_name?.toLowerCase().includes(lowerQuery)
-      
-      // Check Location
       const locationMatch = profile.location?.toLowerCase().includes(lowerQuery)
       
-      // Check Skills (Preserved Legacy Logic)
       let skillsMatch = false
       if (Array.isArray(profile.skills)) {
-        skillsMatch = profile.skills.some((skill: string) => 
-          skill.toLowerCase().includes(lowerQuery)
-        )
+        skillsMatch = profile.skills.some((skill: string) => skill.toLowerCase().includes(lowerQuery))
       } else if (typeof profile.skills === 'string') {
         skillsMatch = profile.skills.toLowerCase().includes(lowerQuery)
       }
@@ -89,30 +78,29 @@ function SearchContent() {
     })
 
     setFilteredProfiles(results)
-    setVisibleCount(12) // Reset pagination when search changes
+    setVisibleCount(ITEMS_PER_PAGE) // Reset to Page 1 on new search
   }
 
-  // Handle typing in search box
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const term = e.target.value
     setSearchTerm(term)
     applyFilter(allProfiles, term)
   }
 
-  // ✅ NEW: Handle "Show More"
+  // ✅ FIX 2: Explicit Handler with Logging
   const handleLoadMore = () => {
-    setVisibleCount(prev => prev + 12)
+    console.log("Loading more profiles...")
+    setVisibleCount(prev => prev + ITEMS_PER_PAGE)
   }
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4">
       <div className="max-w-5xl mx-auto">
         
-        {/* Header & Search Bar */}
+        {/* Header */}
         <div className="mb-10 text-center">
           <h1 className="text-3xl font-black text-primary mb-4">Find Top Talent</h1>
-          <p className="text-slate-500 mb-8">Search by name, role, or location (e.g. "Jones", "Denver", "Site")</p>
-          
+          <p className="text-slate-500 mb-8">Search by name, role, or location</p>
           <div className="max-w-xl mx-auto relative">
             <input 
               type="text" 
@@ -125,7 +113,7 @@ function SearchContent() {
           </div>
         </div>
 
-        {/* Results Grid */}
+        {/* Results */}
         {loading ? (
           <div className="text-center py-20">
             <div className="inline-block animate-spin h-8 w-8 border-4 border-secondary border-t-transparent rounded-full"></div>
@@ -133,12 +121,12 @@ function SearchContent() {
           </div>
         ) : (
           <>
+            {/* GRID CONTAINER */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProfiles.length > 0 ? (
-                // ✅ ROLL UP: Only map the visible slice
+                // ✅ SLICE LOGIC
                 filteredProfiles.slice(0, visibleCount).map((profile) => (
                   <div key={profile.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col group">
-                    
                     <div className="flex items-center gap-4 mb-4">
                       <div className="h-14 w-14 rounded-full bg-slate-100 border border-slate-200 overflow-hidden">
                         {profile.avatar_url ? (
@@ -152,8 +140,6 @@ function SearchContent() {
                       <div>
                         <h3 className="font-bold text-lg text-primary">{profile.full_name}</h3>
                         <p className="text-xs text-slate-500 uppercase tracking-wide">{profile.location || 'Location N/A'}</p>
-                        
-                        {/* ✅ NEW: Rating Display */}
                         {profile.avgRating > 0 && (
                           <div className="flex items-center gap-1 mt-1">
                              <span className="text-yellow-400 text-xs">★</span>
@@ -170,20 +156,15 @@ function SearchContent() {
                       </p>
                     </div>
 
-                    {/* Skills Tags (PRESERVED LOGIC) */}
+                    {/* Skills Logic */}
                     <div className="flex flex-wrap gap-2 mb-4">
                       {Array.isArray(profile.skills) ? (
                         profile.skills.slice(0, 3).map((skill: string, i: number) => (
-                          <span key={i} className="px-2 py-1 bg-slate-50 text-slate-600 text-[10px] font-bold uppercase rounded border border-slate-200">
-                            {skill}
-                          </span>
+                          <span key={i} className="px-2 py-1 bg-slate-50 text-slate-600 text-[10px] font-bold uppercase rounded border border-slate-200">{skill}</span>
                         ))
                       ) : profile.skills ? (
-                        // Handle old string format fallback
                         profile.skills.split(',').slice(0, 3).map((skill: string, i: number) => (
-                          <span key={i} className="px-2 py-1 bg-slate-50 text-slate-600 text-[10px] font-bold uppercase rounded border border-slate-200">
-                            {skill}
-                          </span>
+                          <span key={i} className="px-2 py-1 bg-slate-50 text-slate-600 text-[10px] font-bold uppercase rounded border border-slate-200">{skill}</span>
                         ))
                       ) : (
                         <span className="text-[10px] text-slate-300 italic">No skills listed</span>
@@ -193,10 +174,7 @@ function SearchContent() {
                       )}
                     </div>
 
-                    <Link 
-                      href={`/profile/${profile.id}`} 
-                      className="block w-full py-2 text-center bg-primary text-white font-bold rounded-lg hover:bg-slate-800 transition-colors mt-auto"
-                    >
+                    <Link href={`/profile/${profile.id}`} className="block w-full py-2 text-center bg-primary text-white font-bold rounded-lg hover:bg-slate-800 transition-colors mt-auto">
                       View Profile
                     </Link>
                   </div>
@@ -204,22 +182,19 @@ function SearchContent() {
               ) : (
                 <div className="col-span-full text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
                   <p className="text-slate-400 text-lg">No talent found matching "{searchTerm}"</p>
-                  <button 
-                    onClick={() => { setSearchTerm(''); applyFilter(allProfiles, ''); }}
-                    className="mt-4 text-secondary font-bold hover:underline"
-                  >
+                  <button onClick={() => { setSearchTerm(''); applyFilter(allProfiles, ''); }} className="mt-4 text-secondary font-bold hover:underline">
                     Clear search
                   </button>
                 </div>
               )}
             </div>
 
-            {/* ✅ NEW: Load More Button */}
+            {/* ✅ LOAD MORE BUTTON (Only shows if we have hidden items) */}
             {visibleCount < filteredProfiles.length && (
                <div className="mt-12 text-center">
                  <button 
                    onClick={handleLoadMore}
-                   className="bg-white border border-slate-300 text-slate-600 px-8 py-3 rounded-xl font-bold hover:bg-slate-50 transition-all shadow-sm"
+                   className="bg-white border border-slate-300 text-slate-600 px-8 py-3 rounded-xl font-bold hover:bg-slate-50 transition-all shadow-sm active:scale-95"
                  >
                    Load More Talent ↓
                  </button>
