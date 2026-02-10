@@ -5,7 +5,7 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-// ✅ 1. IMPORT NOTIFICATIONS (PRESERVED)
+// ✅ 1. IMPORT NOTIFICATIONS
 import { sendNotification } from '@/src/utils/notifications'
 
 export default function JobDetailsPage() {
@@ -13,9 +13,9 @@ export default function JobDetailsPage() {
   const [loading, setLoading] = useState(true)
   const [appStatus, setAppStatus] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
-  // ✅ 2. NEW STATE FOR ROLE
+  // ✅ 2. STATE FOR ROLE
   const [userRole, setUserRole] = useState<string | null>(null)
-  // ✅ State for Digital Handshake (PRESERVED)
+  // ✅ State for Digital Handshake
   const [agreed, setAgreed] = useState(false)
 
   const supabase = createClient()
@@ -75,13 +75,13 @@ export default function JobDetailsPage() {
       return
     }
 
-    // ✅ 4. BLOCK ORGANIZERS
-    if (userRole !== 'contractor') {
-      toast.error('Only Contractors can apply for jobs.')
+    // ✅ 4. BLOCK ORGANIZERS (Allow both Contractor & Worker)
+    if (userRole !== 'contractor' && userRole !== 'worker') {
+      toast.error('Only Contractors/Workers can apply for jobs.')
       return
     }
 
-    // ✅ Enforce Agreement Logic (PRESERVED)
+    // ✅ Enforce Agreement Logic
     if (!agreed) {
       toast.error('You must agree to the job terms to apply.')
       return
@@ -101,7 +101,7 @@ export default function JobDetailsPage() {
       toast.success('Application Sent!', { id: toastId })
       setAppStatus('pending')
 
-      // ✅ SEND NOTIFICATION (PRESERVED)
+      // ✅ SEND NOTIFICATION
       if (job?.organizer_id) {
         await sendNotification({
           userId: job.organizer_id,
@@ -114,9 +114,11 @@ export default function JobDetailsPage() {
     }
   }
 
-  // ✅ 5. UPDATE BUTTON UI FOR ORGANIZERS
+  // ✅ 5. UPDATE BUTTON UI
   const getButtonUI = () => {
-    if (userRole === 'organizer') return { text: 'Organizers Cannot Apply', disabled: true, classes: 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' }
+    if (userRole === 'organizer') {
+      return { text: 'Organizers Cannot Apply', disabled: true, classes: 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' }
+    }
     if (appStatus === 'approved') return { text: '🎉 You are Hired!', disabled: true, classes: 'bg-green-600 text-white cursor-default' }
     if (appStatus === 'rejected') return { text: '✕ Application Declined', disabled: true, classes: 'bg-slate-200 text-slate-500 cursor-not-allowed' }
     if (appStatus === 'pending') return { text: '✓ Application Submitted', disabled: true, classes: 'bg-slate-200 text-slate-500 cursor-not-allowed' }
@@ -179,8 +181,8 @@ export default function JobDetailsPage() {
 
               <div className="pt-8 border-t border-slate-200 mt-8">
                 
-                {/* ✅ CHECKBOX: Only show if user is CONTRACTOR */}
-                {!appStatus && userRole === 'contractor' && (
+                {/* ✅ FIXED CHECKBOX: Show for BOTH 'contractor' AND 'worker' */}
+                {!appStatus && (userRole === 'contractor' || userRole === 'worker') && (
                   <div className="mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                     <label className="flex items-start gap-3 cursor-pointer select-none">
                       <input 
