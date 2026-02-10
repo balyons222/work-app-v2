@@ -25,17 +25,23 @@ function SearchContent() {
     fetchContractors(initialQuery || '')
   }, [searchParams])
 
-  async function fetchContractors(query: string = '') {
+async function fetchContractors(query: string = '') {
     setLoading(true)
     
-    // 1. Fetch Data
+    // 1. Fetch Data (Allow BOTH 'contractor' and 'worker')
     const { data, error } = await supabase
       .from('profiles')
       .select(`
         *,
         reviews!reviewee_id (rating)
       `) 
-      .eq('role', 'contractor')
+      .in('role', ['contractor', 'worker']) // ✅ FIXED: Accepts both role names
+    
+    if (error) {
+      console.error('Error fetching talent:', error)
+      setLoading(false)
+      return
+    }
     
     if (error) {
       console.error('Error fetching talent:', error)
