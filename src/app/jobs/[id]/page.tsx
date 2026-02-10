@@ -5,18 +5,20 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-// ✅ 1. IMPORT NOTIFICATIONS
 import { sendNotification } from '@/src/utils/notifications'
+import TermsModal from '@/src/components/TermsModal'
 
 export default function JobDetailsPage() {
   const [job, setJob] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [appStatus, setAppStatus] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
-  // ✅ 2. STATE FOR ROLE
   const [userRole, setUserRole] = useState<string | null>(null)
-  // ✅ State for Digital Handshake
   const [agreed, setAgreed] = useState(false)
+  
+  // ✅ TERMS STATE (Declared correctly at the top)
+  const [showTerms, setShowTerms] = useState(false)
+  const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false)
 
   const supabase = createClient()
   const params = useParams()
@@ -31,7 +33,7 @@ export default function JobDetailsPage() {
     const { data: { user } } = await supabase.auth.getUser()
     setCurrentUser(user)
 
-    // Fetch Job Data
+    // 1. Fetch Job Data
     const { data: jobData, error } = await supabase
       .from('jobs')
       .select(`*, events (title, location, event_date, website, description)`)
@@ -46,16 +48,19 @@ export default function JobDetailsPage() {
     setJob(jobData)
 
     if (user) {
-      // ✅ 3. FETCH USER ROLE
+      // ✅ 2. FETCH USER PROFILE (Role + Terms Status) - SINGLE CALL
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, accepted_tos_at')
         .eq('id', user.id)
         .single()
       
-      if (profile) setUserRole(profile.role)
+      if (profile) {
+        setUserRole(profile.role)
+        if (profile.accepted_tos_at) setHasAcceptedTerms(true)
+      }
 
-      // Fetch Application Status
+      // 3. Fetch Application Status
       const { data: appData } = await supabase
         .from('applications')
         .select('status') 
@@ -75,13 +80,19 @@ export default function JobDetailsPage() {
       return
     }
 
-    // ✅ 4. BLOCK ORGANIZERS (Allow both Contractor & Worker)
+    // ✅ 1. CHECK TERMS ACCEPTANCE FIRST
+    if (!hasAcceptedTerms) {
+      setShowTerms(true)
+      return
+    }
+
+    // ✅ 2. CHECK ROLE (Contractor OR Worker)
     if (userRole !== 'contractor' && userRole !== 'worker') {
       toast.error('Only Contractors/Workers can apply for jobs.')
       return
     }
 
-    // ✅ Enforce Agreement Logic
+    // ✅ 3. CHECK JOB AGREEMENT (Checkbox)
     if (!agreed) {
       toast.error('You must agree to the job terms to apply.')
       return
@@ -101,7 +112,6 @@ export default function JobDetailsPage() {
       toast.success('Application Sent!', { id: toastId })
       setAppStatus('pending')
 
-      // ✅ SEND NOTIFICATION
       if (job?.organizer_id) {
         await sendNotification({
           userId: job.organizer_id,
@@ -114,11 +124,8 @@ export default function JobDetailsPage() {
     }
   }
 
-  // ✅ 5. UPDATE BUTTON UI
   const getButtonUI = () => {
-    if (userRole === 'organizer') {
-      return { text: 'Organizers Cannot Apply', disabled: true, classes: 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' }
-    }
+    if (userRole === 'organizer') return { text: 'Organizers Cannot Apply', disabled: true, classes: 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' }
     if (appStatus === 'approved') return { text: '🎉 You are Hired!', disabled: true, classes: 'bg-green-600 text-white cursor-default' }
     if (appStatus === 'rejected') return { text: '✕ Application Declined', disabled: true, classes: 'bg-slate-200 text-slate-500 cursor-not-allowed' }
     if (appStatus === 'pending') return { text: '✓ Application Submitted', disabled: true, classes: 'bg-slate-200 text-slate-500 cursor-not-allowed' }
@@ -131,9 +138,8 @@ export default function JobDetailsPage() {
   if (loading) return <div className="p-20 text-center">Loading Details...</div>
   if (!job) return <div className="p-20 text-center">Job not found.</div>
 
-  // ✅ VISUALS START HERE
   return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4">
+    <div className="min-h-screen bg-slate-50 py-12 px-4 relative">
       <div className="max-w-3xl mx-auto">
         <Link href="/jobs" className="inline-flex items-center text-sm font-bold text-slate-400 hover:text-primary mb-8 transition-colors">← Back to Job Board</Link>
 
@@ -181,7 +187,7 @@ export default function JobDetailsPage() {
 
               <div className="pt-8 border-t border-slate-200 mt-8">
                 
-                {/* ✅ FIXED CHECKBOX: Show for BOTH 'contractor' AND 'worker' */}
+                {/* Checkbox Logic: Show for Contractor OR Worker */}
                 {!appStatus && (userRole === 'contractor' || userRole === 'worker') && (
                   <div className="mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                     <label className="flex items-start gap-3 cursor-pointer select-none">
@@ -210,9 +216,21 @@ export default function JobDetailsPage() {
               </div>
             </div>
           </div>
-
         </div>
       </div>
+
+      {/* ✅ TERMS MODAL (Outside the main container logic) */}
+      {showTerms && currentUser && (
+        <TermsModal 
+          userId={currentUser.id} 
+          onClose={() => setShowTerms(false)}
+          onAccept={() => {
+            setHasAcceptedTerms(true)
+            setShowTerms(false)
+            toast.success("Terms accepted! You can now apply.")
+          }}
+        />
+      )}
     </div>
   )
 }
