@@ -5,7 +5,7 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-// ✅ 1. IMPORT NOTIFICATIONS
+// ✅ 1. IMPORT NOTIFICATIONS (PRESERVED)
 import { sendNotification } from '@/src/utils/notifications'
 
 export default function JobDetailsPage() {
@@ -13,7 +13,9 @@ export default function JobDetailsPage() {
   const [loading, setLoading] = useState(true)
   const [appStatus, setAppStatus] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
-  // ✅ State for Digital Handshake
+  // ✅ 2. NEW STATE FOR ROLE
+  const [userRole, setUserRole] = useState<string | null>(null)
+  // ✅ State for Digital Handshake (PRESERVED)
   const [agreed, setAgreed] = useState(false)
 
   const supabase = createClient()
@@ -29,9 +31,9 @@ export default function JobDetailsPage() {
     const { data: { user } } = await supabase.auth.getUser()
     setCurrentUser(user)
 
+    // Fetch Job Data
     const { data: jobData, error } = await supabase
       .from('jobs')
-      // ✅ Fetch organizer_id just in case it's needed for notifications
       .select(`*, events (title, location, event_date, website, description)`)
       .eq('id', jobId)
       .single()
@@ -44,6 +46,16 @@ export default function JobDetailsPage() {
     setJob(jobData)
 
     if (user) {
+      // ✅ 3. FETCH USER ROLE
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+      
+      if (profile) setUserRole(profile.role)
+
+      // Fetch Application Status
       const { data: appData } = await supabase
         .from('applications')
         .select('status') 
@@ -60,6 +72,12 @@ export default function JobDetailsPage() {
     if (!currentUser) {
       toast.error('Please log in to apply')
       router.push('/login')
+      return
+    }
+
+    // ✅ 4. BLOCK ORGANIZERS
+    if (userRole !== 'contractor') {
+      toast.error('Only Contractors can apply for jobs.')
       return
     }
 
@@ -83,7 +101,7 @@ export default function JobDetailsPage() {
       toast.success('Application Sent!', { id: toastId })
       setAppStatus('pending')
 
-      // ✅ 2. SEND NOTIFICATION TO ORGANIZER
+      // ✅ SEND NOTIFICATION (PRESERVED)
       if (job?.organizer_id) {
         await sendNotification({
           userId: job.organizer_id,
@@ -96,11 +114,13 @@ export default function JobDetailsPage() {
     }
   }
 
-  // Helper for button UI
+  // ✅ 5. UPDATE BUTTON UI FOR ORGANIZERS
   const getButtonUI = () => {
+    if (userRole === 'organizer') return { text: 'Organizers Cannot Apply', disabled: true, classes: 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' }
     if (appStatus === 'approved') return { text: '🎉 You are Hired!', disabled: true, classes: 'bg-green-600 text-white cursor-default' }
     if (appStatus === 'rejected') return { text: '✕ Application Declined', disabled: true, classes: 'bg-slate-200 text-slate-500 cursor-not-allowed' }
     if (appStatus === 'pending') return { text: '✓ Application Submitted', disabled: true, classes: 'bg-slate-200 text-slate-500 cursor-not-allowed' }
+    
     return { text: 'Apply for this Position', disabled: false, classes: 'bg-primary text-white hover:bg-slate-800 shadow-lg hover:shadow-xl' }
   }
 
@@ -159,8 +179,8 @@ export default function JobDetailsPage() {
 
               <div className="pt-8 border-t border-slate-200 mt-8">
                 
-                {/* ✅ CHECKBOX IS PRESERVED HERE */}
-                {!appStatus && (
+                {/* ✅ CHECKBOX: Only show if user is CONTRACTOR */}
+                {!appStatus && userRole === 'contractor' && (
                   <div className="mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                     <label className="flex items-start gap-3 cursor-pointer select-none">
                       <input 
