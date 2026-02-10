@@ -5,6 +5,7 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+import { sendNotification } from '@/src/utils/notifications'
 
 function DashboardContent() {
   const [profile, setProfile] = useState<any>(null)
@@ -23,10 +24,14 @@ function DashboardContent() {
   const [budget, setBudget] = useState('')
   const [website, setWebsite] = useState('')
   const [description, setDescription] = useState('')
-  
-  // ✅ NEW: POC State
   const [pocName, setPocName] = useState('')
   const [pocPhone, setPocPhone] = useState('')
+
+  // ✅ REVIEW STATE
+  const [reviewModalOpen, setReviewModalOpen] = useState(false)
+  const [reviewTarget, setReviewTarget] = useState<any>(null) // { jobId, organizerId, eventName }
+  const [rating, setRating] = useState(5)
+  const [comment, setComment] = useState('')
 
   const supabase = createClient()
   const router = useRouter()
@@ -66,13 +71,15 @@ function DashboardContent() {
 
       // 3. CONTRACTOR DATA FETCH
       if (profileData?.role === 'contractor') {
+        // ✅ Updated Query: Fetch reviews to check if we reviewed them already
         const { data: appsData } = await supabase
           .from('applications')
           .select(`
             *,
             jobs (
-              id, title, rate, start_date, end_date,
-              events ( title, location, event_date, poc_name, poc_phone )
+              id, title, rate, start_date, end_date, organizer_id,
+              events ( title, location, event_date, poc_name, poc_phone ),
+              reviews ( reviewer_id ) 
             )
           `)
           .eq('applicant_id', user.id)
@@ -99,7 +106,6 @@ function DashboardContent() {
     const { error } = await supabase.from('events').insert({
       title, location, event_date: date, budget: parseFloat(budget),
       website, description, organizer_id: user.id,
-      // ✅ SAVE POC INFO
       poc_name: pocName,
       poc_phone: pocPhone
     })
@@ -108,8 +114,50 @@ function DashboardContent() {
     else {
       toast.success('Event created!')
       setIsCreating(false)
-      // Reset all fields
       setTitle(''); setLocation(''); setDate(''); setBudget(''); setWebsite(''); setDescription(''); setPocName(''); setPocPhone('');
+      loadDashboardData()
+    }
+  }
+
+  // ✅ REVIEW SUBMISSION LOGIC
+  const openReviewModal = (job: any) => {
+    setReviewTarget({
+      jobId: job.id,
+      organizerId: job.organizer_id,
+      eventName: job.events?.title
+    })
+    setRating(5)
+    setComment('')
+    setReviewModalOpen(true)
+  }
+
+  const submitReview = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { error } = await supabase.from('reviews').insert({
+      reviewer_id: user.id,
+      reviewee_id: reviewTarget.organizerId, // Reviewing the Organizer
+      job_id: reviewTarget.jobId,
+      rating: rating,
+      comment: comment
+    })
+
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success('Review Submitted!')
+      
+      // Notify Organizer
+      await sendNotification({
+        userId: reviewTarget.organizerId,
+        title: "New Review! ⭐",
+        message: `A worker left you a ${rating}-star review for ${reviewTarget.eventName}.`,
+        link: `/dashboard`, // Or profile link
+        type: "success"
+      })
+
+      setReviewModalOpen(false)
       loadDashboardData()
     }
   }
@@ -118,7 +166,6 @@ function DashboardContent() {
   const bookedJobs = myApps.filter(a => a.status === 'approved' && a.payment_status !== 'paid')
   const pendingJobs = myApps.filter(a => a.status === 'pending')
   const pastJobs = myApps.filter(a => a.payment_status === 'paid')
-  // Calculate total earnings from past jobs
   const totalEarnings = pastJobs.reduce((sum, app) => sum + (app.jobs?.rate || 0), 0)
 
 
@@ -143,7 +190,7 @@ function DashboardContent() {
               )}
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 italic">Work FxD, {profile?.full_name || 'Member'}</h1>
+              <h1 className="text-2xl font-bold text-gray-900 italic">Stay FxD, {profile?.full_name || 'Member'}</h1>
               <p className="text-sm text-gray-500 capitalize">{profile?.role} • {profile?.location || 'Location not set'}</p>
             </div>
           </div>
@@ -153,12 +200,12 @@ function DashboardContent() {
         </div>
 
         {/* ========================================================= */}
-        {/* ✅ CONTRACTOR DASHBOARD VIEW */}
+        {/* CONTRACTOR DASHBOARD VIEW */}
         {/* ========================================================= */}
         {profile?.role === 'contractor' && (
           <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
-            {/* 1. UPCOMING SCHEDULE (Booked) */}
+            {/* 1. UPCOMING SCHEDULE */}
             <section>
               <h2 className="text-xl font-black text-primary mb-4 flex items-center gap-2">
                 📅 Upcoming Schedule <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">{bookedJobs.length}</span>
@@ -184,7 +231,6 @@ function DashboardContent() {
                         <p>🗓️ {app.jobs?.start_date} → {app.jobs?.end_date}</p>
                       </div>
 
-                      {/* ✅ THE UNLOCK: Site Lead Contact Info */}
                       {app.jobs?.events?.poc_name && (
                         <div className="mt-4 pt-4 border-t border-slate-100">
                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">On-Site Contact</p>
@@ -252,20 +298,40 @@ function DashboardContent() {
                         <th className="p-4">Role</th>
                         <th className="p-4">Date</th>
                         <th className="p-4 text-right">Paid</th>
+                        <th className="p-4 text-right">Review</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {pastJobs.map(app => (
-                        <tr key={app.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-4 font-bold text-slate-900">{app.jobs?.events?.title}</td>
-                          <td className="p-4 text-slate-600">{app.jobs?.title}</td>
-                          <td className="p-4 text-slate-500">{new Date(app.jobs?.start_date).toLocaleDateString()}</td>
-                          <td className="p-4 text-right font-bold text-green-600">
-                            ${app.jobs?.rate}
-                            <span className="block text-[10px] text-slate-400 font-normal uppercase">{app.payment_method}</span>
-                          </td>
-                        </tr>
-                      ))}
+                      {pastJobs.map(app => {
+                        // Check if I (the logged in user) have already written a review for this job
+                        // "app.jobs.reviews" is an array of reviews connected to this job. 
+                        // We check if any of them have 'reviewer_id' === my ID.
+                        const hasReviewed = app.jobs?.reviews?.some((r: any) => r.reviewer_id === profile?.id)
+
+                        return (
+                          <tr key={app.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-4 font-bold text-slate-900">{app.jobs?.events?.title}</td>
+                            <td className="p-4 text-slate-600">{app.jobs?.title}</td>
+                            <td className="p-4 text-slate-500">{new Date(app.jobs?.start_date).toLocaleDateString()}</td>
+                            <td className="p-4 text-right font-bold text-green-600">
+                              ${app.jobs?.rate}
+                              <span className="block text-[10px] text-slate-400 font-normal uppercase">{app.payment_method}</span>
+                            </td>
+                            <td className="p-4 text-right">
+                              {hasReviewed ? (
+                                <span className="text-xs font-bold text-yellow-500 bg-yellow-50 px-2 py-1 rounded">⭐ Submitted</span>
+                              ) : (
+                                <button 
+                                  onClick={() => openReviewModal(app.jobs)}
+                                  className="text-xs font-bold text-secondary bg-teal-50 border border-teal-100 px-3 py-1 rounded-lg hover:bg-teal-100 transition-colors"
+                                >
+                                  Rate Org
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 )}
@@ -276,7 +342,7 @@ function DashboardContent() {
         )}
 
         {/* ========================================================= */}
-        {/* ✅ ORGANIZER DASHBOARD VIEW */}
+        {/* ORGANIZER DASHBOARD VIEW */}
         {/* ========================================================= */}
         {profile?.role === 'organizer' && (
           <>
@@ -356,6 +422,40 @@ function DashboardContent() {
           </>
         )}
       </div>
+
+      {/* ✅ REVIEW MODAL (CONTRACTOR SIDE) */}
+      {reviewModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full animate-in fade-in zoom-in-95">
+            <h3 className="text-2xl font-black text-primary mb-2">Rate Organizer</h3>
+            <p className="text-slate-500 text-sm mb-6">How was working with {reviewTarget?.eventName || 'this event'}?</p>
+            
+            <div className="flex justify-center gap-2 mb-6">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button 
+                  key={star} 
+                  onClick={() => setRating(star)} 
+                  className={`text-4xl transition-transform hover:scale-110 ${rating >= star ? 'text-yellow-400' : 'text-slate-200'}`}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+
+            <textarea 
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Was payment on time? Was the site safe? (Optional)"
+              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl h-32 mb-6 outline-none focus:ring-2 focus:ring-secondary"
+            />
+
+            <div className="flex gap-4">
+              <button onClick={() => setReviewModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Cancel</button>
+              <button onClick={submitReview} className="flex-1 py-3 bg-secondary text-white font-bold rounded-xl hover:bg-teal-600 shadow-lg">Submit Review</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
