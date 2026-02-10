@@ -42,12 +42,6 @@ async function fetchContractors(query: string = '') {
       setLoading(false)
       return
     }
-    
-    if (error) {
-      console.error('Error fetching talent:', error)
-      setLoading(false)
-      return
-    }
 
     // 2. Process Ratings
     const profilesWithRating = data?.map(p => {
