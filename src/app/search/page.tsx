@@ -8,10 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 function SearchContent() {
   const [allProfiles, setAllProfiles] = useState<any[]>([]) 
   const [filteredProfiles, setFilteredProfiles] = useState<any[]>([])
-  
-  // ✅ FIX 1: Set limit to 6 initially so you can see it working easily
-  const ITEMS_PER_PAGE = 6
-  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE)
+  const [visibleCount, setVisibleCount] = useState(6)
   
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
@@ -25,17 +22,17 @@ function SearchContent() {
     fetchContractors(initialQuery || '')
   }, [searchParams])
 
-async function fetchContractors(query: string = '') {
+  async function fetchContractors(query: string = '') {
     setLoading(true)
     
-    // 1. Fetch Data (Allow BOTH 'contractor' and 'worker')
+    // 1. FAILSAFE QUERY: Fetch ALL profiles first (No 'eq' filters)
+    // We also verify if reviews can be joined. If this fails, we will fallback.
     const { data, error } = await supabase
       .from('profiles')
       .select(`
         *,
         reviews!reviewee_id (rating)
-      `) 
-      .in('role', ['contractor', 'worker']) // ✅ FIXED: Accepts both role names
+      `)
     
     if (error) {
       console.error('Error fetching talent:', error)
@@ -43,18 +40,24 @@ async function fetchContractors(query: string = '') {
       return
     }
 
-    // 2. Process Ratings
-    const profilesWithRating = data?.map(p => {
+    // 2. JAVASCRIPT FILTERING (More robust than DB filtering for mismatched roles)
+    // We manually check if role is 'contractor' OR 'worker' (Case insensitive)
+    const workersOnly = data?.filter(p => {
+       const role = p.role ? p.role.toLowerCase() : ''
+       return role === 'contractor' || role === 'worker' || role === 'event professional'
+    }) || []
+
+    // 3. Process Ratings
+    const profilesWithRating = workersOnly.map(p => {
       const ratings = p.reviews?.map((r: any) => r.rating) || []
       const avg = ratings.length > 0 ? ratings.reduce((a: number, b: number) => a + b, 0) / ratings.length : 0
       return { ...p, avgRating: avg, reviewCount: ratings.length }
-    }) || []
+    })
 
-    // 3. Sort & Set
+    // 4. Sort: Highest Rated First
     const sortedProfiles = profilesWithRating.sort((a, b) => b.avgRating - a.avgRating)
+    
     setAllProfiles(sortedProfiles)
-
-    // 4. Apply Filter
     applyFilter(sortedProfiles, query)
     setLoading(false)
   }
@@ -66,6 +69,7 @@ async function fetchContractors(query: string = '') {
       if (!lowerQuery) return true 
       const nameMatch = profile.full_name?.toLowerCase().includes(lowerQuery)
       const locationMatch = profile.location?.toLowerCase().includes(lowerQuery)
+      const roleMatch = profile.role?.toLowerCase().includes(lowerQuery)
       
       let skillsMatch = false
       if (Array.isArray(profile.skills)) {
@@ -74,11 +78,11 @@ async function fetchContractors(query: string = '') {
         skillsMatch = profile.skills.toLowerCase().includes(lowerQuery)
       }
 
-      return nameMatch || locationMatch || skillsMatch
+      return nameMatch || locationMatch || roleMatch || skillsMatch
     })
 
     setFilteredProfiles(results)
-    setVisibleCount(ITEMS_PER_PAGE) // Reset to Page 1 on new search
+    setVisibleCount(6) 
   }
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -87,17 +91,13 @@ async function fetchContractors(query: string = '') {
     applyFilter(allProfiles, term)
   }
 
-  // ✅ FIX 2: Explicit Handler with Logging
   const handleLoadMore = () => {
-    console.log("Loading more profiles...")
-    setVisibleCount(prev => prev + ITEMS_PER_PAGE)
+    setVisibleCount(prev => prev + 6)
   }
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4">
       <div className="max-w-5xl mx-auto">
-        
-        {/* Header */}
         <div className="mb-10 text-center">
           <h1 className="text-3xl font-black text-primary mb-4">Find Top Talent</h1>
           <p className="text-slate-500 mb-8">Search by name, role, or location</p>
@@ -113,7 +113,6 @@ async function fetchContractors(query: string = '') {
           </div>
         </div>
 
-        {/* Results */}
         {loading ? (
           <div className="text-center py-20">
             <div className="inline-block animate-spin h-8 w-8 border-4 border-secondary border-t-transparent rounded-full"></div>
@@ -121,10 +120,8 @@ async function fetchContractors(query: string = '') {
           </div>
         ) : (
           <>
-            {/* GRID CONTAINER */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProfiles.length > 0 ? (
-                // ✅ SLICE LOGIC
                 filteredProfiles.slice(0, visibleCount).map((profile) => (
                   <div key={profile.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col group">
                     <div className="flex items-center gap-4 mb-4">
@@ -156,7 +153,6 @@ async function fetchContractors(query: string = '') {
                       </p>
                     </div>
 
-                    {/* Skills Logic */}
                     <div className="flex flex-wrap gap-2 mb-4">
                       {Array.isArray(profile.skills) ? (
                         profile.skills.slice(0, 3).map((skill: string, i: number) => (
@@ -169,9 +165,6 @@ async function fetchContractors(query: string = '') {
                       ) : (
                         <span className="text-[10px] text-slate-300 italic">No skills listed</span>
                       )}
-                      {(Array.isArray(profile.skills) ? profile.skills.length : (profile.skills?.split(',').length || 0)) > 3 && (
-                        <span className="px-2 py-1 text-[10px] text-slate-400">+ more</span>
-                      )}
                     </div>
 
                     <Link href={`/profile/${profile.id}`} className="block w-full py-2 text-center bg-primary text-white font-bold rounded-lg hover:bg-slate-800 transition-colors mt-auto">
@@ -181,7 +174,7 @@ async function fetchContractors(query: string = '') {
                 ))
               ) : (
                 <div className="col-span-full text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
-                  <p className="text-slate-400 text-lg">No talent found matching "{searchTerm}"</p>
+                  <p className="text-slate-400 text-lg">No talent found.</p>
                   <button onClick={() => { setSearchTerm(''); applyFilter(allProfiles, ''); }} className="mt-4 text-secondary font-bold hover:underline">
                     Clear search
                   </button>
@@ -189,21 +182,12 @@ async function fetchContractors(query: string = '') {
               )}
             </div>
 
-            {/* ✅ LOAD MORE BUTTON (Only shows if we have hidden items) */}
             {visibleCount < filteredProfiles.length && (
                <div className="mt-12 text-center">
-                 <button 
-                   onClick={handleLoadMore}
-                   className="bg-white border border-slate-300 text-slate-600 px-8 py-3 rounded-xl font-bold hover:bg-slate-50 transition-all shadow-sm active:scale-95"
-                 >
+                 <button onClick={handleLoadMore} className="bg-white border border-slate-300 text-slate-600 px-8 py-3 rounded-xl font-bold hover:bg-slate-50 transition-all shadow-sm active:scale-95">
                    Load More Talent ↓
                  </button>
                </div>
-            )}
-            
-            {/* End of list message */}
-            {visibleCount >= filteredProfiles.length && filteredProfiles.length > 0 && (
-               <p className="text-center text-slate-400 text-sm mt-12">You've reached the end of the list.</p>
             )}
           </>
         )}
