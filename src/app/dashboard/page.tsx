@@ -62,15 +62,25 @@ function DashboardContent() {
       if (profileError) throw profileError
       setProfile(profileData)
 
-      // 2. ORGANIZER DATA FETCH
+      // 2. ORGANIZER DATA FETCH (With Budget Calculation)
       if (profileData?.role === 'organizer') {
         const { data: eventsData } = await supabase
           .from('events')
-          .select('*, jobs(count)')
+          .select('*, jobs(id, rate)') // Fetch jobs and rates
           .eq('organizer_id', user.id)
           .order('event_date', { ascending: true })
         
-        setEvents(eventsData || [])
+        // Calculate Committed Spend
+        const eventsWithBudget = eventsData?.map(event => {
+          const committed = event.jobs?.reduce((sum: number, job: any) => sum + (job.rate || 0), 0) || 0
+          return {
+            ...event,
+            committed_spend: committed,
+            remaining_budget: (event.budget || 0) - committed
+          }
+        })
+
+        setEvents(eventsWithBudget || [])
       }
 
       // 3. CONTRACTOR DATA FETCH
@@ -315,9 +325,6 @@ function DashboardContent() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {pastJobs.map(app => {
-                        // Check if I (the logged in user) have already written a review for this job
-                        // "app.jobs.reviews" is an array of reviews connected to this job. 
-                        // We check if any of them have 'reviewer_id' === my ID.
                         const hasReviewed = app.jobs?.reviews?.some((r: any) => r.reviewer_id === profile?.id)
 
                         return (
@@ -424,6 +431,11 @@ function DashboardContent() {
                       <div className="text-right">
                         <span className="block text-sm text-gray-500 font-medium">Budget</span>
                         <span className="text-xl font-bold text-green-700">${event.budget}</span>
+                        {/* ✅ SHOW CALCULATED COMMITTED SPEND */}
+                        <div className="mt-2 text-xs">
+                          <span className="text-slate-400">Committed: </span>
+                          <span className="font-bold text-slate-700">${event.committed_spend}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -477,7 +489,6 @@ function DashboardContent() {
             setProfile({ ...profile, accepted_tos_at: new Date().toISOString() })
             setShowTerms(false)
             toast.success("Terms accepted. You can now create events.")
-            // Automatically open the form after acceptance
             setIsCreating(true)
           }}
         />
