@@ -268,9 +268,9 @@ function DashboardContent() {
                   <div>
                     <h4 className="font-bold text-yellow-800 text-sm">Tax Filing Status</h4>
                     <p className="text-xs text-yellow-700 mt-1">
-                      {totalEarnings >= 600 
-                        ? "You have earned over $600. You will receive a 1099-NEC form at year-end." 
-                        : `You are $${600 - totalEarnings} away from the IRS reporting threshold.`}
+                      {totalEarnings >= 2000 
+                        ? "You have earned over $2000. You will receive a 1099-NEC form at year-end." 
+                        : `You are $${2000 - totalEarnings} away from the IRS reporting threshold.`}
                     </p>
                   </div>
                 </div>
