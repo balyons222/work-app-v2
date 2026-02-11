@@ -31,6 +31,8 @@ function DashboardContent() {
   const [description, setDescription] = useState('')
   const [pocName, setPocName] = useState('')
   const [pocPhone, setPocPhone] = useState('')
+  // ✅ 1. NEW VISIBILITY STATE
+  const [visibility, setVisibility] = useState('public')
 
   // Review State
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
@@ -126,17 +128,24 @@ function DashboardContent() {
     if (!user) return
 
     const { error } = await supabase.from('events').insert({
-      title, location, event_date: date, budget: parseFloat(budget),
-      website, description, organizer_id: user.id,
+      title, 
+      location, 
+      event_date: date, 
+      budget: parseFloat(budget),
+      website, 
+      description, 
+      organizer_id: user.id,
       poc_name: pocName,
-      poc_phone: pocPhone
+      poc_phone: pocPhone,
+      visibility: visibility // ✅ 2. INSERT VISIBILITY
     })
 
     if (error) toast.error('Failed to create event')
     else {
       toast.success('Event created!')
       setIsCreating(false)
-      setTitle(''); setLocation(''); setDate(''); setBudget(''); setWebsite(''); setDescription(''); setPocName(''); setPocPhone('');
+      // Reset Form
+      setTitle(''); setLocation(''); setDate(''); setBudget(''); setWebsite(''); setDescription(''); setPocName(''); setPocPhone(''); setVisibility('public');
       loadDashboardData()
     }
   }
@@ -468,11 +477,26 @@ function DashboardContent() {
                     <form onSubmit={handleCreateEvent} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <input type="text" placeholder="Event Name" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={title} onChange={e => setTitle(e.target.value)} required />
                       <input type="text" placeholder="Location (City, State)" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={location} onChange={e => setLocation(e.target.value)} required />
+                      
                       <div className="flex flex-col">
                         <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Event Date</label>
                         <input type="date" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={date} onChange={e => setDate(e.target.value)} required />
                       </div>
+                      
+                      {/* ✅ 3. VISIBILITY SELECTOR ADDED */}
                       <div className="flex flex-col">
+                        <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Visibility</label>
+                        <select 
+                          value={visibility} 
+                          onChange={(e) => setVisibility(e.target.value)}
+                          className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary bg-white font-bold text-slate-700"
+                        >
+                          <option value="public">🌍 Public (Visible to Everyone)</option>
+                          <option value="private">🔒 Private (Invite Only)</option>
+                        </select>
+                      </div>
+
+                      <div className="flex flex-col md:col-span-2">
                         <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Total Labor Budget</label>
                         <input type="number" placeholder="$ 0.00" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={budget} onChange={e => setBudget(e.target.value)} required />
                       </div>
@@ -509,12 +533,17 @@ function DashboardContent() {
                             <h3 className="text-xl font-bold text-gray-900 group-hover:text-primary transition-colors">
                               {event.title} &rarr;
                             </h3>
-                            <p className="text-gray-500">📍 {event.location} • 📅 {event.event_date ? new Date(event.event_date).toLocaleDateString() : 'No date set'}</p>
+                            <div className="flex items-center gap-3 text-sm text-gray-500 font-medium mt-1">
+                               <span>📍 {event.location}</span>
+                               <span>📅 {event.event_date ? new Date(event.event_date).toLocaleDateString() : 'No date set'}</span>
+                               {event.visibility === 'private' && (
+                                 <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">🔒 Private</span>
+                               )}
+                            </div>
                           </div>
                           <div className="text-right">
                             <span className="block text-sm text-gray-500 font-medium">Budget</span>
                             <span className="text-xl font-bold text-green-700">${event.budget}</span>
-                            {/* ✅ SHOW CALCULATED COMMITTED SPEND */}
                             <div className="mt-2 text-xs">
                               <span className="text-slate-400">Committed: </span>
                               <span className="font-bold text-slate-700">${event.committed_spend}</span>
