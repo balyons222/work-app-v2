@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { sendNotification } from '@/src/utils/notifications'
+import InviteTalentModal from '@/src/components/InviteTalentModal' // ✅ 1. IMPORT ADDED
 
 // 🛠️ SHARED ROLES
 const ROLE_CATEGORIES = {
@@ -19,7 +20,10 @@ export default function EventManagerPage() {
   const [jobs, setJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   
-  // ✅ FORM STATE
+  // ✅ 2. INVITE MODAL STATE ADDED
+  const [showInviteModal, setShowInviteModal] = useState(false)
+
+  // FORM STATE
   const [showJobForm, setShowJobForm] = useState(false)
   const [editingJobId, setEditingJobId] = useState<string | null>(null)
 
@@ -32,7 +36,7 @@ export default function EventManagerPage() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
 
-  // ✅ REVIEW STATE
+  // REVIEW STATE
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
   const [reviewTarget, setReviewTarget] = useState<any>(null) 
   const [rating, setRating] = useState(5)
@@ -61,7 +65,6 @@ export default function EventManagerPage() {
     }
     setEvent(eventData)
 
-    // ✅ UPDATED QUERY: Fetch 'reviews' so we can check if they exist
     const { data: jobsData } = await supabase
       .from('jobs')
       .select(`
@@ -79,7 +82,7 @@ export default function EventManagerPage() {
     setLoading(false)
   }
 
-  // ✅ PREPARE FORM FOR EDITING
+  // PREPARE FORM FOR EDITING
   const handleEditClick = (job: any) => {
     setEditingJobId(job.id)
     setSelectedRole(job.title)
@@ -194,7 +197,7 @@ export default function EventManagerPage() {
     }
   }
 
-  // ✅ REVIEW LOGIC HANDLERS
+  // REVIEW LOGIC HANDLERS
   const openReviewModal = (app: any, job: any) => {
     setReviewTarget({
       appId: app.id,
@@ -245,7 +248,7 @@ export default function EventManagerPage() {
     const jobCost = job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate
     return sum + (jobCost || 0)
   }, 0)
-  
+   
   const remainingBudget = totalBudget - allocatedBudget
   const percentUsed = Math.min((allocatedBudget / totalBudget) * 100, 100)
 
@@ -264,15 +267,33 @@ export default function EventManagerPage() {
               <span className="inline-block px-3 py-1 bg-teal-50 text-secondary text-xs font-bold uppercase tracking-widest rounded-full mb-3">Event Container</span>
               <h1 className="text-4xl font-black text-primary mb-2">{event.title}</h1>
               <p className="text-lg text-slate-600 mb-4">{event.description}</p>
-              <div className="flex flex-wrap gap-6 text-sm font-bold text-slate-500">
+              
+              {/* ✅ PRIVATE EVENT BADGE */}
+              <div className="flex flex-wrap gap-4 text-sm font-bold text-slate-500 items-center">
                 <span>📍 {event.location}</span>
                 <span>📅 {new Date(event.event_date).toLocaleDateString()}</span>
+                {event.visibility === 'private' && (
+                  <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-lg text-xs uppercase tracking-wider">🔒 Private Event</span>
+                )}
               </div>
             </div>
 
             <div className="w-full md:w-80 bg-slate-50 p-6 rounded-2xl border border-slate-200">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Labor Budget</p>
-              <p className="text-3xl font-black text-slate-900 mb-4">${totalBudget.toLocaleString()}</p>
+              <div className="flex justify-between items-start mb-4">
+                 <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Labor Budget</p>
+                    <p className="text-3xl font-black text-slate-900">${totalBudget.toLocaleString()}</p>
+                 </div>
+                 
+                 {/* ✅ 3. INVITE BUTTON ADDED HERE */}
+                 <button 
+                   onClick={() => setShowInviteModal(true)}
+                   className="bg-black text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2 shadow-md"
+                 >
+                   <span>✉️</span> Invite Talent
+                 </button>
+              </div>
+
               <div className="space-y-3">
                 <div className="flex justify-between text-xs font-bold text-slate-500"><span>Allocated (Est.)</span><span>${allocatedBudget.toLocaleString()}</span></div>
                 <div className="h-3 w-full bg-white rounded-full overflow-hidden border border-slate-200">
@@ -312,7 +333,7 @@ export default function EventManagerPage() {
                     ))}
                   </select>
                 </div>
-                
+                 
                 <div className="flex gap-4">
                    <div className="w-1/2">
                       <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Pay Type</label>
@@ -334,17 +355,17 @@ export default function EventManagerPage() {
                 {rateType === 'hourly' && (
                   <div className="md:col-span-2 bg-yellow-50 p-4 rounded-xl border border-yellow-100 flex items-center gap-4">
                     <div className="flex-1">
-                       <label className="block text-xs font-bold text-yellow-600 uppercase tracking-widest mb-1">Estimated Hours</label>
-                       <p className="text-xs text-yellow-600/80">Used for budget calculation only.</p>
-                    </div>
-                    <input 
-                      type="number" 
-                      placeholder="e.g. 10" 
-                      value={estimatedHours} 
-                      onChange={(e) => setEstimatedHours(e.target.value)} 
-                      className="w-32 p-3 bg-white border border-yellow-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold" 
-                      required 
-                    />
+                        <label className="block text-xs font-bold text-yellow-600 uppercase tracking-widest mb-1">Estimated Hours</label>
+                        <p className="text-xs text-yellow-600/80">Used for budget calculation only.</p>
+                     </div>
+                     <input 
+                       type="number" 
+                       placeholder="e.g. 10" 
+                       value={estimatedHours} 
+                       onChange={(e) => setEstimatedHours(e.target.value)} 
+                       className="w-32 p-3 bg-white border border-yellow-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold" 
+                       required 
+                     />
                   </div>
                 )}
 
@@ -407,7 +428,6 @@ export default function EventManagerPage() {
                   ) : (
                     <div className="space-y-3">
                       {job.applications.map((app: any) => {
-                        // ✅ CHECK IF THIS USER HAS A REVIEW
                         const hasReview = job.reviews?.some((r: any) => r.reviewee_id === app.applicant_id)
 
                         return (
@@ -440,8 +460,6 @@ export default function EventManagerPage() {
                                 app.payment_status === 'paid' ? (
                                   <div className="flex items-center gap-4">
                                     <div><span className="text-green-600 font-bold text-sm block">✓ Paid</span><span className="text-xs text-slate-400 font-medium">{app.payment_method}</span></div>
-                                    
-                                    {/* ✅ REVIEW BUTTON / BADGE */}
                                     {hasReview ? (
                                       <span className="text-xs font-bold text-yellow-500 bg-yellow-50 px-2 py-1 rounded">⭐ Reviewed</span>
                                     ) : (
@@ -468,7 +486,7 @@ export default function EventManagerPage() {
 
       </div>
 
-      {/* ✅ REVIEW MODAL */}
+      {/* REVIEW MODAL */}
       {reviewModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full animate-in fade-in zoom-in-95">
@@ -500,6 +518,14 @@ export default function EventManagerPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ✅ 4. INVITE TALENT MODAL */}
+      {showInviteModal && (
+        <InviteTalentModal 
+          eventId={eventId} 
+          onClose={() => setShowInviteModal(false)} 
+        />
       )}
 
     </div>
