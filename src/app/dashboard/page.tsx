@@ -190,7 +190,7 @@ function DashboardContent() {
     } else {
       if (response === 'accepted') {
         toast.success("Invite Accepted! Redirecting...")
-        router.push(`/dashboard/event/${eventId}`) // Redirects to event page
+        router.push(`/event/${eventId}`) // Redirects to event page
       } else {
         toast.success("Invite Declined")
         loadDashboardData() // Refresh list to remove the card
