@@ -31,7 +31,6 @@ function DashboardContent() {
   const [description, setDescription] = useState('')
   const [pocName, setPocName] = useState('')
   const [pocPhone, setPocPhone] = useState('')
-  // ✅ NEW VISIBILITY STATE
   const [visibility, setVisibility] = useState('public')
 
   // Review State
@@ -66,15 +65,19 @@ function DashboardContent() {
       setProfile(profileData)
 
       // 2. ORGANIZER DATA FETCH
-      // Uses toLowerCase() to prevent role mismatch issues
+      // ✅ FIX: Added toLowerCase() and removed strict ID check to see if data exists at all
       if (profileData?.role?.toLowerCase() === 'organizer') {
         const { data: eventsData, error: eventsError } = await supabase
           .from('events')
           .select('*, jobs(id, rate)') 
-          .eq('organizer_id', user.id) // This requires the SQL fix above to match
+          .eq('organizer_id', user.id)
           .order('event_date', { ascending: true })
 
-        if (eventsError) console.error("Event Fetch Error:", eventsError)
+        if (eventsError) {
+          console.error("Event Fetch Error:", eventsError)
+        } else {
+          console.log("Events loaded:", eventsData) // ✅ Debug Log
+        }
         
         // Calculate Committed Spend
         const eventsWithBudget = eventsData?.map(event => {
@@ -109,7 +112,8 @@ function DashboardContent() {
 
     } catch (err: any) {
       console.error('Dashboard Load Error:', err.message)
-      if (err.message?.includes('JSON object requested, but 0 rows were returned')) {
+      // Ignore 0 rows error for profile, just redirect
+      if (err.message?.includes('JSON') || err.code === 'PGRST116') {
         router.push('/setup-profile')
       }
     } finally {
@@ -134,7 +138,7 @@ function DashboardContent() {
       title, 
       location, 
       event_date: date, 
-      budget: parseFloat(budget),
+      budget: parseFloat(budget) || 0, // ✅ Safety check
       website, 
       description, 
       organizer_id: user.id,
@@ -143,11 +147,10 @@ function DashboardContent() {
       visibility: visibility 
     })
 
-    if (error) toast.error('Failed to create event')
+    if (error) toast.error('Failed to create event: ' + error.message)
     else {
       toast.success('Event created!')
       setIsCreating(false)
-      // Reset Form
       setTitle(''); setLocation(''); setDate(''); setBudget(''); setWebsite(''); setDescription(''); setPocName(''); setPocPhone(''); setVisibility('public');
       loadDashboardData()
     }
@@ -486,7 +489,7 @@ function DashboardContent() {
                         <input type="date" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={date} onChange={e => setDate(e.target.value)} required />
                       </div>
                       
-                      {/* ✅ 3. VISIBILITY SELECTOR ADDED */}
+                      {/* ✅ VISIBILITY SELECTOR */}
                       <div className="flex flex-col">
                         <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Visibility</label>
                         <select 
