@@ -66,12 +66,15 @@ function DashboardContent() {
       setProfile(profileData)
 
       // 2. ORGANIZER DATA FETCH
-      if (profileData?.role === 'organizer') {
-        const { data: eventsData } = await supabase
+      // ✅ FIX: Added toLowerCase() to prevent case-sensitivity bugs
+      if (profileData?.role?.toLowerCase() === 'organizer') {
+        const { data: eventsData, error: eventsError } = await supabase
           .from('events')
           .select('*, jobs(id, rate)') 
           .eq('organizer_id', user.id)
           .order('event_date', { ascending: true })
+
+        if (eventsError) console.error("Event Fetch Error:", eventsError)
         
         // Calculate Committed Spend
         const eventsWithBudget = eventsData?.map(event => {
@@ -87,7 +90,7 @@ function DashboardContent() {
       }
 
       // 3. CONTRACTOR DATA FETCH
-      if (profileData?.role === 'contractor') {
+      if (profileData?.role?.toLowerCase() === 'contractor') {
         const { data: appsData } = await supabase
           .from('applications')
           .select(`
@@ -248,7 +251,7 @@ function DashboardContent() {
         {/* ========================================================= */}
         {/* CONTRACTOR DASHBOARD VIEW */}
         {/* ========================================================= */}
-        {profile?.role === 'contractor' && (
+        {profile?.role?.toLowerCase() === 'contractor' && (
           <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {activeTab === 'reports' ? (
               // --- REPORT VIEW ---
@@ -424,7 +427,7 @@ function DashboardContent() {
         {/* ========================================================= */}
         {/* ORGANIZER DASHBOARD VIEW */}
         {/* ========================================================= */}
-        {profile?.role === 'organizer' && (
+        {profile?.role?.toLowerCase() === 'organizer' && (
           <>
             {activeTab === 'reports' ? (
               // --- REPORTS VIEW ---
