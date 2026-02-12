@@ -31,7 +31,7 @@ function DashboardContent() {
   const [description, setDescription] = useState('')
   const [pocName, setPocName] = useState('')
   const [pocPhone, setPocPhone] = useState('')
-  // ✅ 1. NEW VISIBILITY STATE
+  // ✅ NEW VISIBILITY STATE
   const [visibility, setVisibility] = useState('public')
 
   // Review State
@@ -66,12 +66,12 @@ function DashboardContent() {
       setProfile(profileData)
 
       // 2. ORGANIZER DATA FETCH
-      // ✅ FIX: Added toLowerCase() to prevent case-sensitivity bugs
+      // Uses toLowerCase() to prevent role mismatch issues
       if (profileData?.role?.toLowerCase() === 'organizer') {
         const { data: eventsData, error: eventsError } = await supabase
           .from('events')
           .select('*, jobs(id, rate)') 
-          .eq('organizer_id', user.id)
+          .eq('organizer_id', user.id) // This requires the SQL fix above to match
           .order('event_date', { ascending: true })
 
         if (eventsError) console.error("Event Fetch Error:", eventsError)
@@ -140,7 +140,7 @@ function DashboardContent() {
       organizer_id: user.id,
       poc_name: pocName,
       poc_phone: pocPhone,
-      visibility: visibility // ✅ 2. INSERT VISIBILITY
+      visibility: visibility 
     })
 
     if (error) toast.error('Failed to create event')
