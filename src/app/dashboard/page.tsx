@@ -15,7 +15,7 @@ function DashboardContent() {
   
   // Contractor State
   const [myApps, setMyApps] = useState<any[]>([])
-  
+  const [invites, setInvites] = useState<any[]>([]) 
   const [loading, setLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   
@@ -90,6 +90,18 @@ function DashboardContent() {
 
       // 3. CONTRACTOR DATA FETCH
       if (profileData?.role?.toLowerCase() === 'contractor') {
+        // ✅ FETCH PENDING INVITES
+        const { data: invitesData } = await supabase
+          .from('event_invitations')
+          .select(`
+            id, status, 
+            events ( id, title, location, event_date, organizer_id )
+          `)
+          .eq('invitee_id', user.id)
+          .eq('status', 'pending') // Only show pending ones
+        
+        setInvites(invitesData || []) // Set the state
+        
         const { data: appsData } = await supabase
           .from('applications')
           .select(`
@@ -163,6 +175,26 @@ function DashboardContent() {
     } else {
       toast.success("Event deleted")
       loadDashboardData() 
+    }
+  }
+
+  // ✅ INVITE RESPONSE FUNCTION (Moved Inside Component Scope)
+  const handleInviteResponse = async (inviteId: string, response: 'accepted' | 'declined', eventId: string) => {
+    const { error } = await supabase
+      .from('event_invitations')
+      .update({ status: response })
+      .eq('id', inviteId)
+
+    if (error) {
+      toast.error("Failed to update invite")
+    } else {
+      if (response === 'accepted') {
+        toast.success("Invite Accepted! Redirecting...")
+        router.push(`/dashboard/event/${eventId}`) // Redirects to event page
+      } else {
+        toast.success("Invite Declined")
+        loadDashboardData() // Refresh list to remove the card
+      }
     }
   }
 
@@ -303,6 +335,47 @@ function DashboardContent() {
             ) : (
               // --- OVERVIEW VIEW (Schedule + Pending + History) ---
               <div className="space-y-10">
+                {/* 0. EVENT INVITATIONS (NEW) */}
+                {invites.length > 0 && (
+                  <section className="animate-in slide-in-from-top-4 fade-in duration-500">
+                    <div className="bg-gradient-to-r from-purple-900 to-indigo-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
+                      <div className="relative z-10">
+                        <h2 className="text-xl font-black mb-4 flex items-center gap-2">
+                          🎟️ You're Invited! <span className="bg-white/20 text-xs px-2 py-1 rounded-full">{invites.length}</span>
+                        </h2>
+                        
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {invites.map(invite => (
+                            <div key={invite.id} className="bg-white/10 backdrop-blur-sm p-4 rounded-xl border border-white/20 flex justify-between items-center">
+                              <div>
+                                <h3 className="font-bold text-lg text-white">{invite.events?.title}</h3>
+                                <p className="text-sm text-indigo-200">📍 {invite.events?.location} • 📅 {new Date(invite.events?.event_date).toLocaleDateString()}</p>
+                              </div>
+                              <div className="flex gap-2">
+                                <button 
+                                  onClick={() => handleInviteResponse(invite.id, 'declined', invite.events?.id)}
+                                  className="px-3 py-2 text-xs font-bold text-white/70 hover:bg-white/10 rounded-lg transition-colors"
+                                >
+                                  Decline
+                                </button>
+                                <button 
+                                  onClick={() => handleInviteResponse(invite.id, 'accepted', invite.events?.id)}
+                                  className="px-4 py-2 text-xs font-bold bg-white text-indigo-900 rounded-lg hover:bg-indigo-50 shadow-md transition-colors"
+                                >
+                                  View & Apply
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Decorative Background Circles */}
+                      <div className="absolute top-0 right-0 -mt-10 -mr-10 w-32 h-32 bg-purple-500 rounded-full blur-3xl opacity-30"></div>
+                      <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-32 h-32 bg-indigo-500 rounded-full blur-3xl opacity-30"></div>
+                    </div>
+                  </section>
+                )}
                 {/* 1. UPCOMING SCHEDULE */}
                 <section>
                   <h2 className="text-xl font-black text-primary mb-4 flex items-center gap-2">
