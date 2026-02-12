@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { sendNotification } from '@/src/utils/notifications'
-import InviteTalentModal from '@/src/components/InviteTalentModal' // ✅ 1. IMPORT ADDED
+import InviteTalentModal from '@/src/components/InviteTalentModal' 
 
 // 🛠️ SHARED ROLES
 const ROLE_CATEGORIES = {
@@ -20,10 +20,17 @@ export default function EventManagerPage() {
   const [jobs, setJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   
-  // ✅ 2. INVITE MODAL STATE ADDED
+  // ✅ 1. EDIT EVENT DETAILS STATE
+  const [isEditingEvent, setIsEditingEvent] = useState(false)
+  const [eventFormData, setEventFormData] = useState({
+    title: '', location: '', event_date: '', budget: '', 
+    description: '', website: '', poc_name: '', poc_phone: '', visibility: 'public'
+  })
+  
+  // ✅ 2. INVITE MODAL STATE
   const [showInviteModal, setShowInviteModal] = useState(false)
 
-  // FORM STATE
+  // FORM STATE (JOBS)
   const [showJobForm, setShowJobForm] = useState(false)
   const [editingJobId, setEditingJobId] = useState<string | null>(null)
 
@@ -64,6 +71,19 @@ export default function EventManagerPage() {
       return
     }
     setEvent(eventData)
+    
+    // Initialize Edit Form Data
+    setEventFormData({
+      title: eventData.title || '',
+      location: eventData.location || '',
+      event_date: eventData.event_date || '',
+      budget: eventData.budget || '',
+      description: eventData.description || '',
+      website: eventData.website || '',
+      poc_name: eventData.poc_name || '',
+      poc_phone: eventData.poc_phone || '',
+      visibility: eventData.visibility || 'public'
+    })
 
     const { data: jobsData } = await supabase
       .from('jobs')
@@ -82,7 +102,38 @@ export default function EventManagerPage() {
     setLoading(false)
   }
 
-  // PREPARE FORM FOR EDITING
+  // --- EVENT EDITING LOGIC ---
+  const handleEventChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    setEventFormData({ ...eventFormData, [e.target.name]: e.target.value })
+  }
+
+  const handleUpdateEvent = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const { error } = await supabase
+      .from('events')
+      .update({
+        title: eventFormData.title,
+        location: eventFormData.location,
+        event_date: eventFormData.event_date,
+        budget: parseFloat(eventFormData.budget),
+        description: eventFormData.description,
+        website: eventFormData.website,
+        poc_name: eventFormData.poc_name,
+        poc_phone: eventFormData.poc_phone,
+        visibility: eventFormData.visibility
+      })
+      .eq('id', eventId)
+
+    if (error) {
+      toast.error("Failed to update event")
+    } else {
+      toast.success("Event updated details!")
+      setIsEditingEvent(false)
+      loadEventData()
+    }
+  }
+
+  // --- JOB FORM LOGIC ---
   const handleEditClick = (job: any) => {
     setEditingJobId(job.id)
     setSelectedRole(job.title)
@@ -248,7 +299,7 @@ export default function EventManagerPage() {
     const jobCost = job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate
     return sum + (jobCost || 0)
   }, 0)
-   
+    
   const remainingBudget = totalBudget - allocatedBudget
   const percentUsed = Math.min((allocatedBudget / totalBudget) * 100, 100)
 
@@ -260,49 +311,111 @@ export default function EventManagerPage() {
           ← Back to Dashboard
         </Link>
 
-        {/* 1. EVENT SUMMARY */}
+        {/* 1. EVENT SUMMARY (VIEW VS EDIT MODE) */}
         <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm mb-8">
-          <div className="flex flex-col md:flex-row justify-between gap-8">
-            <div className="flex-1">
-              <span className="inline-block px-3 py-1 bg-teal-50 text-secondary text-xs font-bold uppercase tracking-widest rounded-full mb-3">Event Container</span>
-              <h1 className="text-4xl font-black text-primary mb-2">{event.title}</h1>
-              <p className="text-lg text-slate-600 mb-4">{event.description}</p>
-              
-              {/* ✅ PRIVATE EVENT BADGE */}
-              <div className="flex flex-wrap gap-4 text-sm font-bold text-slate-500 items-center">
-                <span>📍 {event.location}</span>
-                <span>📅 {new Date(event.event_date).toLocaleDateString()}</span>
-                {event.visibility === 'private' && (
-                  <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-lg text-xs uppercase tracking-wider">🔒 Private Event</span>
-                )}
-              </div>
-            </div>
-
-            <div className="w-full md:w-80 bg-slate-50 p-6 rounded-2xl border border-slate-200">
-              <div className="flex justify-between items-start mb-4">
-                 <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Labor Budget</p>
-                    <p className="text-3xl font-black text-slate-900">${totalBudget.toLocaleString()}</p>
-                 </div>
-                 
-                 {/* ✅ 3. INVITE BUTTON ADDED HERE */}
-                 <button 
-                   onClick={() => setShowInviteModal(true)}
-                   className="bg-black text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2 shadow-md"
-                 >
-                   <span>✉️</span> Invite Talent
-                 </button>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex justify-between text-xs font-bold text-slate-500"><span>Allocated (Est.)</span><span>${allocatedBudget.toLocaleString()}</span></div>
-                <div className="h-3 w-full bg-white rounded-full overflow-hidden border border-slate-200">
-                  <div className={`h-full transition-all duration-500 ${remainingBudget < 0 ? 'bg-red-500' : 'bg-secondary'}`} style={{ width: `${percentUsed}%` }} />
+          
+          {!isEditingEvent ? (
+            // --- VIEW MODE ---
+            <div className="flex flex-col md:flex-row justify-between gap-8">
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="inline-block px-3 py-1 bg-teal-50 text-secondary text-xs font-bold uppercase tracking-widest rounded-full">Event Container</span>
+                  {/* ✅ EDIT BUTTON */}
+                  <button onClick={() => setIsEditingEvent(true)} className="text-slate-400 hover:text-primary text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                    ✎ Edit Details
+                  </button>
                 </div>
-                <div className={`flex justify-between text-xs font-bold ${remainingBudget < 0 ? 'text-red-600' : 'text-green-600'}`}><span>Remaining</span><span>${remainingBudget.toLocaleString()}</span></div>
+                <h1 className="text-4xl font-black text-primary mb-2">{event.title}</h1>
+                <p className="text-lg text-slate-600 mb-4">{event.description}</p>
+                
+                <div className="flex flex-wrap gap-4 text-sm font-bold text-slate-500 items-center">
+                  <span>📍 {event.location}</span>
+                  <span>📅 {new Date(event.event_date).toLocaleDateString()}</span>
+                  {event.visibility === 'private' && (
+                    <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-lg text-xs uppercase tracking-wider">🔒 Private Event</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="w-full md:w-80 bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                <div className="flex justify-between items-start mb-4">
+                   <div>
+                     <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Labor Budget</p>
+                     <p className="text-3xl font-black text-slate-900">${totalBudget.toLocaleString()}</p>
+                   </div>
+                   <button 
+                     onClick={() => setShowInviteModal(true)}
+                     className="bg-black text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2 shadow-md"
+                   >
+                     <span>✉️</span> Invite
+                   </button>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between text-xs font-bold text-slate-500"><span>Allocated (Est.)</span><span>${allocatedBudget.toLocaleString()}</span></div>
+                  <div className="h-3 w-full bg-white rounded-full overflow-hidden border border-slate-200">
+                    <div className={`h-full transition-all duration-500 ${remainingBudget < 0 ? 'bg-red-500' : 'bg-secondary'}`} style={{ width: `${percentUsed}%` }} />
+                  </div>
+                  <div className={`flex justify-between text-xs font-bold ${remainingBudget < 0 ? 'text-red-600' : 'text-green-600'}`}><span>Remaining</span><span>${remainingBudget.toLocaleString()}</span></div>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            // --- EDIT MODE (FORM) ---
+            <form onSubmit={handleUpdateEvent} className="space-y-6 animate-in fade-in">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-4">
+                <h2 className="text-xl font-black text-slate-900">Edit Event Details</h2>
+                <button type="button" onClick={() => setIsEditingEvent(false)} className="text-sm font-bold text-slate-400 hover:text-slate-600">Cancel</button>
+              </div>
+              
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Title</label>
+                  <input name="title" value={eventFormData.title} onChange={handleEventChange} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-black outline-none font-bold" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Location</label>
+                  <input name="location" value={eventFormData.location} onChange={handleEventChange} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-black outline-none" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Date</label>
+                  <input type="date" name="event_date" value={eventFormData.event_date} onChange={handleEventChange} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-black outline-none" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Budget ($)</label>
+                  <input type="number" name="budget" value={eventFormData.budget} onChange={handleEventChange} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-black outline-none" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Visibility</label>
+                  <select name="visibility" value={eventFormData.visibility} onChange={handleEventChange} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-black outline-none bg-white">
+                    <option value="public">Public</option>
+                    <option value="private">Private</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Website</label>
+                  <input name="website" value={eventFormData.website} onChange={handleEventChange} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-black outline-none" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-400 uppercase">Description</label>
+                <textarea name="description" rows={3} value={eventFormData.description} onChange={handleEventChange} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-black outline-none" />
+              </div>
+              
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 grid md:grid-cols-2 gap-4">
+                 <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-400 uppercase">POC Name</label>
+                    <input name="poc_name" value={eventFormData.poc_name} onChange={handleEventChange} className="w-full p-2 border rounded-lg outline-none" />
+                 </div>
+                 <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-400 uppercase">POC Phone</label>
+                    <input name="poc_phone" value={eventFormData.poc_phone} onChange={handleEventChange} className="w-full p-2 border rounded-lg outline-none" />
+                 </div>
+              </div>
+
+              <button type="submit" className="w-full bg-black text-white font-bold py-3 rounded-xl hover:bg-slate-800">Save Changes</button>
+            </form>
+          )}
         </div>
 
         {/* 2. JOB MANAGER HEADER */}
@@ -333,7 +446,7 @@ export default function EventManagerPage() {
                     ))}
                   </select>
                 </div>
-                 
+                  
                 <div className="flex gap-4">
                    <div className="w-1/2">
                       <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Pay Type</label>
@@ -357,15 +470,15 @@ export default function EventManagerPage() {
                     <div className="flex-1">
                         <label className="block text-xs font-bold text-yellow-600 uppercase tracking-widest mb-1">Estimated Hours</label>
                         <p className="text-xs text-yellow-600/80">Used for budget calculation only.</p>
-                     </div>
-                     <input 
-                       type="number" 
-                       placeholder="e.g. 10" 
-                       value={estimatedHours} 
-                       onChange={(e) => setEstimatedHours(e.target.value)} 
-                       className="w-32 p-3 bg-white border border-yellow-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold" 
-                       required 
-                     />
+                      </div>
+                      <input 
+                        type="number" 
+                        placeholder="e.g. 10" 
+                        value={estimatedHours} 
+                        onChange={(e) => setEstimatedHours(e.target.value)} 
+                        className="w-32 p-3 bg-white border border-yellow-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold" 
+                        required 
+                      />
                   </div>
                 )}
 
