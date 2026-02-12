@@ -31,6 +31,7 @@ function DashboardContent() {
   const [description, setDescription] = useState('')
   const [pocName, setPocName] = useState('')
   const [pocPhone, setPocPhone] = useState('')
+  // ✅ NEW VISIBILITY STATE
   const [visibility, setVisibility] = useState('public')
 
   // Review State
@@ -65,19 +66,14 @@ function DashboardContent() {
       setProfile(profileData)
 
       // 2. ORGANIZER DATA FETCH
-      // ✅ FIX: Added toLowerCase() and removed strict ID check to see if data exists at all
       if (profileData?.role?.toLowerCase() === 'organizer') {
         const { data: eventsData, error: eventsError } = await supabase
           .from('events')
           .select('*, jobs(id, rate)') 
-          .eq('organizer_id', user.id)
+          .eq('organizer_id', user.id) 
           .order('event_date', { ascending: true })
 
-        if (eventsError) {
-          console.error("Event Fetch Error:", eventsError)
-        } else {
-          console.log("Events loaded:", eventsData) // ✅ Debug Log
-        }
+        if (eventsError) console.error("Event Fetch Error:", eventsError)
         
         // Calculate Committed Spend
         const eventsWithBudget = eventsData?.map(event => {
@@ -112,8 +108,7 @@ function DashboardContent() {
 
     } catch (err: any) {
       console.error('Dashboard Load Error:', err.message)
-      // Ignore 0 rows error for profile, just redirect
-      if (err.message?.includes('JSON') || err.code === 'PGRST116') {
+      if (err.message?.includes('JSON object requested, but 0 rows were returned')) {
         router.push('/setup-profile')
       }
     } finally {
@@ -138,7 +133,7 @@ function DashboardContent() {
       title, 
       location, 
       event_date: date, 
-      budget: parseFloat(budget) || 0, // ✅ Safety check
+      budget: parseFloat(budget),
       website, 
       description, 
       organizer_id: user.id,
@@ -147,12 +142,27 @@ function DashboardContent() {
       visibility: visibility 
     })
 
-    if (error) toast.error('Failed to create event: ' + error.message)
+    if (error) toast.error('Failed to create event')
     else {
       toast.success('Event created!')
       setIsCreating(false)
       setTitle(''); setLocation(''); setDate(''); setBudget(''); setWebsite(''); setDescription(''); setPocName(''); setPocPhone(''); setVisibility('public');
       loadDashboardData()
+    }
+  }
+
+  // ✅ DELETE FUNCTION
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!confirm("Are you sure? This will delete the event and ALL associated jobs/applications.")) return
+
+    const { error } = await supabase.from('events').delete().eq('id', eventId)
+    
+    if (error) {
+      toast.error("Failed to delete event")
+      console.error(error)
+    } else {
+      toast.success("Event deleted")
+      loadDashboardData() 
     }
   }
 
@@ -489,7 +499,7 @@ function DashboardContent() {
                         <input type="date" className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-secondary" value={date} onChange={e => setDate(e.target.value)} required />
                       </div>
                       
-                      {/* ✅ VISIBILITY SELECTOR */}
+                      {/* ✅ 3. VISIBILITY SELECTOR ADDED */}
                       <div className="flex flex-col">
                         <label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Visibility</label>
                         <select 
@@ -531,31 +541,45 @@ function DashboardContent() {
                     events.map(event => (
                       <div 
                         key={event.id}
-                        onClick={() => router.push(`/dashboard/event/${event.id}`)}
-                        className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md cursor-pointer transition-all group"
+                        className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all group relative"
                       >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="text-xl font-bold text-gray-900 group-hover:text-primary transition-colors">
-                              {event.title} &rarr;
-                            </h3>
-                            <div className="flex items-center gap-3 text-sm text-gray-500 font-medium mt-1">
-                               <span>📍 {event.location}</span>
-                               <span>📅 {event.event_date ? new Date(event.event_date).toLocaleDateString() : 'No date set'}</span>
-                               {event.visibility === 'private' && (
-                                 <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">🔒 Private</span>
-                               )}
+                        {/* CLICKABLE AREA FOR NAVIGATION */}
+                        <div onClick={() => router.push(`/dashboard/event/${event.id}`)} className="cursor-pointer">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h3 className="text-xl font-bold text-gray-900 group-hover:text-primary transition-colors">
+                                {event.title} &rarr;
+                              </h3>
+                              <div className="flex items-center gap-3 text-sm text-gray-500 font-medium mt-1">
+                                  <span>📍 {event.location}</span>
+                                  <span>📅 {event.event_date ? new Date(event.event_date).toLocaleDateString() : 'No date set'}</span>
+                                  {event.visibility === 'private' && (
+                                    <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider">🔒 Private</span>
+                                  )}
+                              </div>
                             </div>
-                          </div>
-                          <div className="text-right">
-                            <span className="block text-sm text-gray-500 font-medium">Budget</span>
-                            <span className="text-xl font-bold text-green-700">${event.budget}</span>
-                            <div className="mt-2 text-xs">
-                              <span className="text-slate-400">Committed: </span>
-                              <span className="font-bold text-slate-700">${event.committed_spend}</span>
+                            <div className="text-right">
+                              <span className="block text-sm text-gray-500 font-medium">Budget</span>
+                              <span className="text-xl font-bold text-green-700">${event.budget}</span>
+                              <div className="mt-2 text-xs">
+                                <span className="text-slate-400">Committed: </span>
+                                <span className="font-bold text-slate-700">${event.committed_spend}</span>
+                              </div>
                             </div>
                           </div>
                         </div>
+
+                        {/* ✅ DELETE BUTTON ADDED HERE */}
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevents navigating to the page when deleting
+                            handleDeleteEvent(event.id);
+                          }}
+                          className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-red-500 font-bold p-2"
+                          title="Delete Event"
+                        >
+                          ✕
+                        </button>
                       </div>
                     ))
                   )}
