@@ -27,8 +27,8 @@ export default function EventManagerPage() {
     description: '', website: '', poc_name: '', poc_phone: '', visibility: 'public'
   })
   
-  // ✅ 2. INVITE MODAL STATE
-  const [showInviteModal, setShowInviteModal] = useState(false)
+  // ✅ 2. INVITE MODAL STATE (Unified)
+  const [inviteModalData, setInviteModalData] = useState<{ open: boolean, jobId?: string, jobTitle?: string }>({ open: false })
 
   // FORM STATE (JOBS)
   const [showJobForm, setShowJobForm] = useState(false)
@@ -343,11 +343,12 @@ export default function EventManagerPage() {
                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Labor Budget</p>
                      <p className="text-3xl font-black text-slate-900">${totalBudget.toLocaleString()}</p>
                    </div>
+                   {/* ✅ GENERIC INVITE BUTTON */}
                    <button 
-                     onClick={() => setShowInviteModal(true)}
+                     onClick={() => setInviteModalData({ open: true })} 
                      className="bg-black text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2 shadow-md"
                    >
-                     <span>✉️</span> Invite
+                     <span>✉️</span> Invite to Event
                    </button>
                 </div>
 
@@ -525,6 +526,14 @@ export default function EventManagerPage() {
                   </div>
                   
                   <div className="flex items-center gap-3">
+                    {/* ✅ SPECIFIC JOB INVITE BUTTON */}
+                    <button 
+                      onClick={() => setInviteModalData({ open: true, jobId: job.id, jobTitle: job.title })} 
+                      className="text-slate-400 hover:text-secondary font-bold text-xs uppercase tracking-wider flex items-center gap-1"
+                    >
+                      ✉️ Invite
+                    </button>
+                    <div className="h-4 w-px bg-slate-300"></div>
                     <button onClick={() => handleEditClick(job)} className="text-slate-400 hover:text-secondary font-bold text-xs uppercase tracking-wider flex items-center gap-1">✏️ Edit</button>
                     <div className="h-4 w-px bg-slate-300"></div>
                     <button onClick={() => handleDeleteJob(job.id)} className="text-slate-400 hover:text-red-600 font-bold text-xs uppercase tracking-wider">Delete</button>
@@ -634,10 +643,12 @@ export default function EventManagerPage() {
       )}
 
       {/* ✅ 4. INVITE TALENT MODAL */}
-      {showInviteModal && (
+      {inviteModalData.open && (
         <InviteTalentModal 
           eventId={eventId} 
-          onClose={() => setShowInviteModal(false)} 
+          jobId={inviteModalData.jobId}     // Pass ID
+          jobTitle={inviteModalData.jobTitle} // Pass Title
+          onClose={() => setInviteModalData({ open: false })} 
         />
       )}
 
