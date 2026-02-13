@@ -5,7 +5,18 @@ import { createClient } from '@/src/utils/supabase/client'
 import toast from 'react-hot-toast'
 import { sendNotification } from '@/src/utils/notifications'
 
-export default function InviteTalentModal({ eventId, onClose }: { eventId: string, onClose: () => void }) {
+// ✅ Added jobId and jobTitle as optional props
+export default function InviteTalentModal({ 
+  eventId, 
+  jobId, 
+  jobTitle, 
+  onClose 
+}: { 
+  eventId: string, 
+  jobId?: string | null, 
+  jobTitle?: string | null, 
+  onClose: () => void 
+}) {
   const [searchTerm, setSearchTerm] = useState('')
   const [results, setResults] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -32,12 +43,13 @@ export default function InviteTalentModal({ eventId, onClose }: { eventId: strin
   }
 
   const sendInvite = async (talentId: string) => {
-    // 1. Insert the invitation into the database
+    // 1. Insert the invitation (Now including job_id if it exists)
     const { error } = await supabase
       .from('event_invitations')
       .insert({ 
         event_id: eventId, 
         invitee_id: talentId,
+        job_id: jobId || null, // ✅ Save specific job
         status: 'pending' 
       })
 
@@ -49,17 +61,20 @@ export default function InviteTalentModal({ eventId, onClose }: { eventId: strin
         toast.error("Invite failed")
       }
     } else {
-      // 2. ✅ TRIGGER NOTIFICATION (Success Path)
+      // 2. Trigger Notification with specific message
+      const msg = jobTitle 
+        ? `You have been invited to apply for the '${jobTitle}' role.` 
+        : "You have been invited to an exclusive event."
+
       await sendNotification({
-        userId: talentId, // Use the actual ID passed to this function
+        userId: talentId,
         title: "You're Invited! 🎟️",
-        message: "You have been invited to an exclusive event. Check your dashboard.",
+        message: msg,
         link: "/dashboard",
         type: "info"
       })
 
       toast.success("Invitation sent!")
-      // Optional: Remove them from the list so you don't invite again immediately
       setResults(prev => prev.filter(p => p.id !== talentId))
     }
   }
@@ -68,7 +83,11 @@ export default function InviteTalentModal({ eventId, onClose }: { eventId: strin
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-black text-slate-900">Invite Talent</h2>
+          <div>
+            <h2 className="text-xl font-black text-slate-900">Invite Talent</h2>
+            {/* ✅ Show which role we are inviting for */}
+            {jobTitle && <p className="text-sm text-secondary font-bold">For Role: {jobTitle}</p>}
+          </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
         </div>
 
