@@ -154,7 +154,7 @@ function DashboardContent() {
           job_id: jobId,
           application_id: applicationId,
           organizer_id: otherUserId, // They are Organizer
-          worker_id: profile.id // I am Worker
+          worker_id: user.id // I am Worker
         })
         .select()
         .single()
