@@ -106,43 +106,42 @@ export default function EventManagerPage() {
     setLoading(false)
   }
 
-  // --- CHAT LOGIC ---
-  const handleOpenChat = async (jobId: string, applicationId: string, otherUserId: string, otherName: string) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+ const handleOpenChat = async (jobId: string, applicationId: string, workerId: string, workerName: string) => {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
 
-    // 1. Check if chat exists
-    const { data: existingChat } = await supabase
+  // 1. Try to find existing chat
+  const { data: existingChat } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('job_id', jobId)
+    .eq('application_id', applicationId)
+    .maybeSingle() // Use maybeSingle to avoid 406 errors
+
+  if (existingChat) {
+    setActiveChat({ id: existingChat.id, name: workerName })
+  } else {
+    // 2. Create new chat 
+    // In this file, WE are the Organizer (user.id), THEY are the Worker (workerId)
+    const { data: newChat, error } = await supabase
       .from('conversations')
-      .select('id')
-      .eq('job_id', jobId)
-      .eq('application_id', applicationId)
+      .insert({
+        job_id: jobId,
+        application_id: applicationId,
+        organizer_id: user.id, // Current User is the Org
+        worker_id: workerId    // The applicant
+      })
+      .select()
       .single()
 
-    if (existingChat) {
-      setActiveChat({ id: existingChat.id, name: otherName })
+    if (error) {
+      console.error("Chat Start Error:", error)
+      toast.error('Failed to start chat')
     } else {
-      // 2. Create new chat if not exists
-      const { data: newChat, error } = await supabase
-        .from('conversations')
-        .insert({
-          job_id: jobId,
-          application_id: applicationId,
-          organizer_id: user.id, // I am Organizer
-          worker_id: otherUserId // They are Worker
-        })
-        .select()
-        .single()
-
-      if (error) {
-        toast.error('Failed to start chat')
-        console.error(error)
-      } else {
-        setActiveChat({ id: newChat.id, name: otherName })
-      }
+      setActiveChat({ id: newChat.id, name: workerName })
     }
   }
-
+}
   // --- EVENT EDITING LOGIC ---
   const handleEventChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setEventFormData({ ...eventFormData, [e.target.name]: e.target.value })
