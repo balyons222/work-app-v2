@@ -90,15 +90,16 @@ function DashboardContent() {
 
       // 3. CONTRACTOR DATA FETCH
       if (profileData?.role?.toLowerCase() === 'contractor') {
-        // ✅ FETCH PENDING INVITES
+        // ✅ FETCH PENDING INVITES (Updated to include jobs title)
         const { data: invitesData } = await supabase
           .from('event_invitations')
           .select(`
             id, status, 
-            events ( id, title, location, event_date, organizer_id )
+            events ( id, title, location, event_date, organizer_id ),
+            jobs ( title )
           `)
           .eq('invitee_id', user.id)
-          .eq('status', 'pending') // Only show pending ones
+          .eq('status', 'pending') 
         
         setInvites(invitesData || []) // Set the state
         
@@ -178,7 +179,7 @@ function DashboardContent() {
     }
   }
 
-  // ✅ INVITE RESPONSE FUNCTION (Moved Inside Component Scope)
+  // ✅ INVITE RESPONSE FUNCTION
   const handleInviteResponse = async (inviteId: string, response: 'accepted' | 'declined', eventId: string) => {
     const { error } = await supabase
       .from('event_invitations')
@@ -190,10 +191,12 @@ function DashboardContent() {
     } else {
       if (response === 'accepted') {
         toast.success("Invite Accepted! Redirecting...")
-        router.push(`/events/${eventId}`) // Redirects to event page
+        router.push(`/events/${eventId}`) // Redirects to PUBLIC event page
       } else {
         toast.success("Invite Declined")
-        loadDashboardData() // Refresh list to remove the card
+        // Optimistically remove
+        setInvites(current => current.filter(i => i.id !== inviteId))
+        loadDashboardData() 
       }
     }
   }
@@ -349,6 +352,14 @@ function DashboardContent() {
                             <div key={invite.id} className="bg-white/10 backdrop-blur-sm p-4 rounded-xl border border-white/20 flex justify-between items-center">
                               <div>
                                 <h3 className="font-bold text-lg text-white">{invite.events?.title}</h3>
+                                
+                                {/* ✅ DISPLAY SPECIFIC ROLE */}
+                                {invite.jobs?.title && (
+                                  <span className="inline-block bg-white/20 text-white text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider mb-1">
+                                    Role: {invite.jobs.title}
+                                  </span>
+                                )}
+                                
                                 <p className="text-sm text-indigo-200">📍 {invite.events?.location} • 📅 {new Date(invite.events?.event_date).toLocaleDateString()}</p>
                               </div>
                               <div className="flex gap-2">
