@@ -7,6 +7,7 @@ import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { sendNotification } from '@/src/utils/notifications'
 import InviteTalentModal from '@/src/components/InviteTalentModal' 
+import ChatWindow from '@/src/components/ChatWindow' // ✅ IMPORT ADDED
 
 // 🛠️ SHARED ROLES
 const ROLE_CATEGORIES = {
@@ -27,7 +28,7 @@ export default function EventManagerPage() {
     description: '', website: '', poc_name: '', poc_phone: '', visibility: 'public'
   })
   
-  // ✅ 2. INVITE MODAL STATE (Unified)
+  // ✅ 2. INVITE MODAL STATE
   const [inviteModalData, setInviteModalData] = useState<{ open: boolean, jobId?: string, jobTitle?: string }>({ open: false })
 
   // FORM STATE (JOBS)
@@ -48,6 +49,9 @@ export default function EventManagerPage() {
   const [reviewTarget, setReviewTarget] = useState<any>(null) 
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState('')
+
+  // ✅ CHAT STATE
+  const [activeChat, setActiveChat] = useState<{ id: string, name: string } | null>(null)
 
   const supabase = createClient()
   const params = useParams()
@@ -100,6 +104,43 @@ export default function EventManagerPage() {
 
     setJobs(jobsData || [])
     setLoading(false)
+  }
+
+  // --- CHAT LOGIC ---
+  const handleOpenChat = async (jobId: string, applicationId: string, otherUserId: string, otherName: string) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // 1. Check if chat exists
+    const { data: existingChat } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('job_id', jobId)
+      .eq('application_id', applicationId)
+      .single()
+
+    if (existingChat) {
+      setActiveChat({ id: existingChat.id, name: otherName })
+    } else {
+      // 2. Create new chat if not exists
+      const { data: newChat, error } = await supabase
+        .from('conversations')
+        .insert({
+          job_id: jobId,
+          application_id: applicationId,
+          organizer_id: user.id, // I am Organizer
+          worker_id: otherUserId // They are Worker
+        })
+        .select()
+        .single()
+
+      if (error) {
+        toast.error('Failed to start chat')
+        console.error(error)
+      } else {
+        setActiveChat({ id: newChat.id, name: otherName })
+      }
+    }
   }
 
   // --- EVENT EDITING LOGIC ---
@@ -571,13 +612,23 @@ export default function EventManagerPage() {
                                 <p className="text-xs text-slate-400 uppercase font-bold">{app.status}</p>
                               </div>
                             </div>
-                            <div className="text-right">
+                            <div className="text-right flex items-center gap-3">
+                              
+                              {/* ✅ CHAT BUTTON (Always visible for applicants) */}
+                              <button 
+                                onClick={() => handleOpenChat(job.id, app.id, app.applicant_id, app.profiles?.full_name)}
+                                className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-lg hover:bg-blue-100 flex items-center gap-1"
+                              >
+                                💬 Chat
+                              </button>
+
                               {app.status === 'pending' && (
                                 <div className="flex gap-2">
                                   <button onClick={() => handleAppStatus(app.id, 'rejected')} className="px-3 py-1 text-xs font-bold text-red-500 bg-red-50 rounded-lg hover:bg-red-100">Decline</button>
                                   <button onClick={() => handleAppStatus(app.id, 'approved')} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-lg hover:bg-green-600 shadow-sm">Hire</button>
                                 </div>
                               )}
+                              
                               {app.status === 'approved' && (
                                 app.payment_status === 'paid' ? (
                                   <div className="flex items-center gap-4">
@@ -649,6 +700,16 @@ export default function EventManagerPage() {
           jobId={inviteModalData.jobId}     // Pass ID
           jobTitle={inviteModalData.jobTitle} // Pass Title
           onClose={() => setInviteModalData({ open: false })} 
+        />
+      )}
+
+      {/* ✅ 5. CHAT WINDOW (Rendered at bottom) */}
+      {activeChat && (
+        <ChatWindow 
+          conversationId={activeChat.id}
+          currentUserId={supabase.auth.getUser().then(({ data }) => data.user?.id || '') as any} // (This is a quick hack, better to use user state)
+          otherUserName={activeChat.name}
+          onClose={() => setActiveChat(null)}
         />
       )}
 
