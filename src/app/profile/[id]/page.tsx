@@ -12,7 +12,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<any>(null)
   
-  // ✅ NEW: Control how many reviews are visible (Default 3)
+  // ✅ Control how many reviews are visible (Default 3)
   const [visibleCount, setVisibleCount] = useState(3)
 
   const supabase = createClient()
@@ -93,7 +93,7 @@ export default function ProfilePage() {
           ← Back to Dashboard
         </Link>
 
-        {/* 1. PROFILE HEADER CARD (Preserved) */}
+        {/* 1. PROFILE HEADER CARD */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-8">
           <div className="h-32 bg-gradient-to-r from-slate-900 to-slate-800"></div>
           <div className="px-8 pb-8">
@@ -121,12 +121,20 @@ export default function ProfilePage() {
                 {profile.role} • {profile.location || 'Location not set'}
               </p>
               
-              <div className="flex gap-2 mb-6">
-                {['General Labor', 'Technician', 'Site Lead'].map((tag) => (
-                  <span key={tag} className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-full text-[10px] font-bold text-slate-500 uppercase">
-                    {tag}
+              {/* ✅ DYNAMIC SKILLS SECTION (Replaces Hardcoded Tags) */}
+              <div className="flex flex-wrap gap-2 mb-6">
+                {profile.skills && profile.skills.length > 0 ? (
+                  profile.skills.map((tag: string, index: number) => (
+                    <span key={index} className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-full text-[10px] font-bold text-slate-500 uppercase">
+                      {tag}
+                    </span>
+                  ))
+                ) : (
+                  // Fallback if no specific skills listed
+                  <span className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-full text-[10px] font-bold text-slate-500 uppercase">
+                    {profile.role || 'General Staff'}
                   </span>
-                ))}
+                )}
               </div>
 
               <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
@@ -142,7 +150,7 @@ export default function ProfilePage() {
         {/* 2. REPUTATION & REVIEWS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           
-          {/* A. SCORE CARD (Preserved) */}
+          {/* A. SCORE CARD */}
           <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm text-center h-fit">
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Reputation Score</h3>
             <div className="text-5xl font-black text-slate-900 mb-2">{averageRating}</div>
@@ -154,7 +162,7 @@ export default function ProfilePage() {
             <p className="text-xs font-bold text-slate-400 uppercase">{reviews.length} Verified Reviews</p>
           </div>
 
-          {/* B. REVIEWS LIST (Updated with Logic) */}
+          {/* B. REVIEWS LIST */}
           <div className="md:col-span-2 space-y-6">
             <h3 className="text-xl font-black text-slate-900">Recent Feedback</h3>
             
@@ -164,7 +172,7 @@ export default function ProfilePage() {
               </div>
             ) : (
               <>
-                {/* ✅ MAP ONLY VISIBLE REVIEWS (using slice) */}
+                {/* MAP ONLY VISIBLE REVIEWS */}
                 {reviews.slice(0, visibleCount).map((review) => (
                   <div key={review.id} className="relative bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:border-secondary/30 transition-all group">
                     
@@ -217,7 +225,7 @@ export default function ProfilePage() {
                   </div>
                 ))}
 
-                {/* ✅ SHOW MORE BUTTON */}
+                {/* SHOW MORE BUTTON */}
                 {visibleCount < reviews.length && (
                   <button 
                     onClick={() => setVisibleCount(prev => prev + 5)}
