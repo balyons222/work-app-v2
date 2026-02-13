@@ -7,6 +7,7 @@ import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { sendNotification } from '@/src/utils/notifications'
 import TermsModal from '@/src/components/TermsModal'
+import ChatWindow from '@/src/components/ChatWindow' // ✅ 1. ADDED IMPORT
 
 function DashboardContent() {
   const [profile, setProfile] = useState<any>(null)
@@ -31,7 +32,6 @@ function DashboardContent() {
   const [description, setDescription] = useState('')
   const [pocName, setPocName] = useState('')
   const [pocPhone, setPocPhone] = useState('')
-  // ✅ NEW VISIBILITY STATE
   const [visibility, setVisibility] = useState('public')
 
   // Review State
@@ -39,6 +39,9 @@ function DashboardContent() {
   const [reviewTarget, setReviewTarget] = useState<any>(null) 
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState('')
+
+  // ✅ 2. ADDED CHAT STATE
+  const [activeChat, setActiveChat] = useState<{ id: string, name: string } | null>(null)
 
   const supabase = createClient()
   const router = useRouter()
@@ -90,7 +93,6 @@ function DashboardContent() {
 
       // 3. CONTRACTOR DATA FETCH
       if (profileData?.role?.toLowerCase() === 'contractor') {
-        // ✅ FETCH PENDING INVITES (Updated to include jobs title)
         const { data: invitesData } = await supabase
           .from('event_invitations')
           .select(`
@@ -101,7 +103,7 @@ function DashboardContent() {
           .eq('invitee_id', user.id)
           .eq('status', 'pending') 
         
-        setInvites(invitesData || []) // Set the state
+        setInvites(invitesData || []) 
         
         const { data: appsData } = await supabase
           .from('applications')
@@ -126,6 +128,43 @@ function DashboardContent() {
       }
     } finally {
       setLoading(false)
+    }
+  }
+
+  // ✅ 3. ADDED CHAT LOGIC (Contractor Side)
+  const handleOpenChat = async (jobId: string, applicationId: string, otherUserId: string, otherName: string) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // 1. Check if chat exists
+    const { data: existingChat } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('job_id', jobId)
+      .eq('application_id', applicationId)
+      .single()
+
+    if (existingChat) {
+      setActiveChat({ id: existingChat.id, name: otherName })
+    } else {
+      // 2. Create new chat (Contractor is worker, Other is Organizer)
+      const { data: newChat, error } = await supabase
+        .from('conversations')
+        .insert({
+          job_id: jobId,
+          application_id: applicationId,
+          organizer_id: otherUserId, // They are Organizer
+          worker_id: user.id // I am Worker
+        })
+        .select()
+        .single()
+
+      if (error) {
+        toast.error('Failed to start chat')
+        console.error(error)
+      } else {
+        setActiveChat({ id: newChat.id, name: otherName })
+      }
     }
   }
 
@@ -164,7 +203,6 @@ function DashboardContent() {
     }
   }
 
-  // ✅ DELETE FUNCTION
   const handleDeleteEvent = async (eventId: string) => {
     if (!confirm("Are you sure? This will delete the event and ALL associated jobs/applications.")) return
 
@@ -179,7 +217,6 @@ function DashboardContent() {
     }
   }
 
-  // ✅ INVITE RESPONSE FUNCTION
   const handleInviteResponse = async (inviteId: string, response: 'accepted' | 'declined', eventId: string) => {
     const { error } = await supabase
       .from('event_invitations')
@@ -191,10 +228,9 @@ function DashboardContent() {
     } else {
       if (response === 'accepted') {
         toast.success("Invite Accepted! Redirecting...")
-        router.push(`/events/${eventId}`) // Redirects to PUBLIC event page
+        router.push(`/events/${eventId}`) 
       } else {
         toast.success("Invite Declined")
-        // Optimistically remove
         setInvites(current => current.filter(i => i.id !== inviteId))
         loadDashboardData() 
       }
@@ -338,7 +374,7 @@ function DashboardContent() {
             ) : (
               // --- OVERVIEW VIEW (Schedule + Pending + History) ---
               <div className="space-y-10">
-                {/* 0. EVENT INVITATIONS (NEW) */}
+                {/* 0. EVENT INVITATIONS */}
                 {invites.length > 0 && (
                   <section className="animate-in slide-in-from-top-4 fade-in duration-500">
                     <div className="bg-gradient-to-r from-purple-900 to-indigo-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
@@ -352,14 +388,11 @@ function DashboardContent() {
                             <div key={invite.id} className="bg-white/10 backdrop-blur-sm p-4 rounded-xl border border-white/20 flex justify-between items-center">
                               <div>
                                 <h3 className="font-bold text-lg text-white">{invite.events?.title}</h3>
-                                
-                                {/* ✅ DISPLAY SPECIFIC ROLE */}
                                 {invite.jobs?.title && (
                                   <span className="inline-block bg-white/20 text-white text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider mb-1">
                                     Role: {invite.jobs.title}
                                   </span>
                                 )}
-                                
                                 <p className="text-sm text-indigo-200">📍 {invite.events?.location} • 📅 {new Date(invite.events?.event_date).toLocaleDateString()}</p>
                               </div>
                               <div className="flex gap-2">
@@ -381,12 +414,12 @@ function DashboardContent() {
                         </div>
                       </div>
                       
-                      {/* Decorative Background Circles */}
                       <div className="absolute top-0 right-0 -mt-10 -mr-10 w-32 h-32 bg-purple-500 rounded-full blur-3xl opacity-30"></div>
                       <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-32 h-32 bg-indigo-500 rounded-full blur-3xl opacity-30"></div>
                     </div>
                   </section>
                 )}
+                
                 {/* 1. UPCOMING SCHEDULE */}
                 <section>
                   <h2 className="text-xl font-black text-primary mb-4 flex items-center gap-2">
@@ -423,10 +456,17 @@ function DashboardContent() {
                             </div>
                           )}
                           
-                          <div className="mt-4 pt-4 border-t border-slate-100">
-                            <Link href={`/jobs/${app.jobs?.id}`} className="block text-center text-secondary font-bold text-sm hover:underline">
-                              View Job Details & Contact
+                          <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
+                            <Link href={`/jobs/${app.jobs?.id}`} className="text-secondary font-bold text-sm hover:underline">
+                              View Details
                             </Link>
+                            {/* ✅ CHAT BUTTON */}
+                            <button 
+                              onClick={() => handleOpenChat(app.jobs.id, app.id, app.jobs.organizer_id, app.jobs.events?.title)}
+                              className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-2 rounded-lg hover:bg-blue-100 transition-colors"
+                            >
+                              💬 Message Organizer
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -459,7 +499,7 @@ function DashboardContent() {
                   </div>
                 </section>
 
-                {/* 3. WORK HISTORY & EARNINGS */}
+                {/* 3. WORK HISTORY */}
                 <section>
                   <div className="flex items-end justify-between mb-4">
                     <h2 className="text-xl font-black text-primary">💰 Work History</h2>
@@ -719,6 +759,16 @@ function DashboardContent() {
             toast.success("Terms accepted. You can now create events.")
             setIsCreating(true)
           }}
+        />
+      )}
+
+      {/* ✅ 4. RENDER CHAT WINDOW (At Bottom) */}
+      {activeChat && (
+        <ChatWindow 
+          conversationId={activeChat.id}
+          currentUserId={profile?.id} // Use actual profile ID
+          otherUserName={activeChat.name}
+          onClose={() => setActiveChat(null)}
         />
       )}
     </div>
