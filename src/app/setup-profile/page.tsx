@@ -40,6 +40,10 @@ export default function SetupProfile() {
   const [city, setCity] = useState('')
   const [state, setState] = useState('')
 
+  // ✅ NEW: Rate & Experience State
+  const [hourlyRate, setHourlyRate] = useState('')
+  const [yearsExperience, setYearsExperience] = useState('')
+
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
@@ -60,6 +64,9 @@ export default function SetupProfile() {
           setRole(data.role || 'contractor')
           setBio(data.bio || '')
           setAvatarUrl(data.avatar_url || null)
+          // ✅ Load Rate & Exp
+          setHourlyRate(data.hourly_rate ? data.hourly_rate.toString() : '')
+          setYearsExperience(data.years_experience ? data.years_experience.toString() : '')
           
           if (data.location) {
             const parts = data.location.split(', ')
@@ -115,10 +122,6 @@ export default function SetupProfile() {
   const handleSubmit = async () => {
     setLoading(true)
     
-    // Validate location only if it's shown? 
-    // Actually, Organizers might want location too, but let's keep it simple.
-    // If you want Organizers to SKIP location, we need to handle that.
-    // Assuming Organizers still need location for now.
     if (!city || !state) {
       toast.error('Please enter both City and State')
       setLoading(false)
@@ -139,6 +142,9 @@ export default function SetupProfile() {
           skills: selectedRoles, 
           location: formattedLocation,
           avatar_url: avatarUrl,
+          // ✅ Save Rate & Exp
+          hourly_rate: hourlyRate ? parseFloat(hourlyRate) : null,
+          years_experience: yearsExperience ? parseInt(yearsExperience) : null,
           updated_at: new Date().toISOString(),
         })
 
@@ -157,16 +163,9 @@ export default function SetupProfile() {
     }
   }
 
-  // ✅ UPDATED NAV LOGIC
   const nextStep = () => {
     if (step === 1 && role === 'organizer') {
-      // If Organizer, Jump to Step 3 (Bio), skipping Roles/Location check
-      // Wait, Step 2 contains Location too. 
-      // Do you want Organizers to set Location? Usually yes.
-      // If they need location, they must go to Step 2.
-      // If the issue is simply that Step 2 UI was confusing, stick to Step 2.
-      
-      // If you want Organizers to SEE Step 2 (for location) but NOT roles:
+      // Organizers still need location (Step 2), but maybe not roles/rates
       setStep(s => s + 1)
     } else {
       setStep(s => s + 1)
@@ -228,7 +227,7 @@ export default function SetupProfile() {
         {/* STEP 2: ROLES & LOCATION */}
         {step === 2 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-            <h2 className="text-2xl font-black text-primary">{role === 'contractor' ? 'Your Expertise' : 'Your Location'}</h2>
+            <h2 className="text-2xl font-black text-primary">{role === 'contractor' ? 'Expertise & Rates' : 'Your Location'}</h2>
             
             <div className="flex gap-4">
               <input 
@@ -247,9 +246,35 @@ export default function SetupProfile() {
               </select>
             </div>
 
-            {/* ✅ FIXED CONDITIONAL: Roles List Only for Contractors */}
+            {/* ✅ NEW: Rate & Exp Inputs (Contractors Only) */}
             {role === 'contractor' && (
-              <div className="h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Hourly Rate ($)</label>
+                   <input 
+                     type="number" 
+                     value={hourlyRate} 
+                     onChange={(e) => setHourlyRate(e.target.value)} 
+                     placeholder="e.g. 45"
+                     className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold" 
+                   />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Yrs Experience</label>
+                   <input 
+                     type="number" 
+                     value={yearsExperience} 
+                     onChange={(e) => setYearsExperience(e.target.value)} 
+                     placeholder="e.g. 5"
+                     className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold" 
+                   />
+                </div>
+              </div>
+            )}
+
+            {/* Roles List Only for Contractors */}
+            {role === 'contractor' && (
+              <div className="h-[320px] overflow-y-auto pr-2 custom-scrollbar">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 sticky top-0 bg-white pb-2 z-10">Select all roles you are qualified for:</p>
                 {Object.entries(ROLE_CATEGORIES).map(([category, roles]) => (
                   <div key={category} className="mb-6">
@@ -270,8 +295,6 @@ export default function SetupProfile() {
               </div>
             )}
             
-            {/* If Organizer, show nothing extra here, just location above */}
-
             <div className="flex gap-4 pt-4 border-t border-slate-100">
               <button onClick={prevStep} className="flex-1 font-bold text-slate-400 hover:text-primary transition-colors">Back</button>
               <button onClick={nextStep} className="flex-1 bg-primary text-white font-bold py-4 rounded-xl hover:bg-slate-800 transition-all">Next</button>
