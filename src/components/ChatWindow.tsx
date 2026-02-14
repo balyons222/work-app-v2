@@ -33,16 +33,20 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
           table: 'messages', 
           filter: `conversation_id=eq.${conversationId}` 
         }, 
-        (payload) => {
-          // Double-check for duplicates to ensure UI remains clean
-          console.log('Realtime message received:', payload.new);
-          setMessages((prev) => {
-            const exists = prev.some(m => m.id === payload.new.id);
-            if (exists) return prev;
-            return [...prev, payload.new];
-          });
-          scrollToBottom();
-        }
+(payload) => {
+  console.log('Payload received:', payload.new); // Keep this for debugging
+  
+  setMessages((prev) => {
+    // 1. Prevent duplicates
+    if (prev.some(m => m.id === payload.new.id)) return prev;
+    
+    // 2. Add new message
+    return [...prev, payload.new];
+  });
+  
+  // 3. Scroll AFTER the state update is processed
+  setTimeout(() => scrollToBottom(), 100); 
+}
       )
       .subscribe();
 
