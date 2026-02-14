@@ -132,42 +132,49 @@ function DashboardContent() {
   }
 
   // ✅ 3. ADDED CHAT LOGIC (Contractor Side)
-  const handleOpenChat = async (jobId: string, applicationId: string, otherUserId: string, otherName: string) => {
+const handleOpenChat = async (jobId: string, applicationId: string, otherUserId: string, otherName: string) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    // 1. Check if chat exists
+    // 1. Try to find existing chat by APPLICATION ID (The unique key)
     const { data: existingChat } = await supabase
       .from('conversations')
       .select('id')
-      .eq('job_id', jobId)
       .eq('application_id', applicationId)
-      .single()
+      .maybeSingle()
 
     if (existingChat) {
       setActiveChat({ id: existingChat.id, name: otherName })
     } else {
-      // 2. Create new chat (Contractor is worker, Other is Organizer)
+      // 2. Create new chat if none exists
       const { data: newChat, error } = await supabase
         .from('conversations')
         .insert({
           job_id: jobId,
           application_id: applicationId,
-          organizer_id: otherUserId, // They are Organizer
-          worker_id: user.id // I am Worker
+          organizer_id: otherUserId,
+          worker_id: user.id
         })
         .select()
         .single()
 
       if (error) {
-        toast.error('Failed to start chat')
-        console.error(error)
+        // If we hit a race condition and it was just created by someone else, fetch it again
+        if (error.code === '23505') { // Unique violation code
+           const { data: retryChat } = await supabase
+             .from('conversations')
+             .select('id')
+             .eq('application_id', applicationId)
+             .single()
+           if (retryChat) setActiveChat({ id: retryChat.id, name: otherName })
+        } else {
+           toast.error('Failed to start chat')
+        }
       } else {
         setActiveChat({ id: newChat.id, name: otherName })
       }
     }
   }
-
   const handleCreateEventClick = () => {
     if (!profile?.accepted_tos_at) {
       setShowTerms(true)
