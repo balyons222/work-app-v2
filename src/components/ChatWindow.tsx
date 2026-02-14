@@ -23,16 +23,27 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
     fetchMessages()
     
     // ✅ REALTIME SUBSCRIPTION
+    // Using an underscore in the channel name is safer
     const channel = supabase
-      .channel(`chat:${conversationId}`)
+      .channel(`chat_${conversationId}`) 
       .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, 
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'messages', 
+          filter: `conversation_id=eq.${conversationId}` 
+        }, 
         (payload) => {
-          setMessages((prev) => [...prev, payload.new])
-          scrollToBottom()
+          // Double-check for duplicates to ensure UI remains clean
+          setMessages((prev) => {
+            const exists = prev.some(m => m.id === payload.new.id);
+            if (exists) return prev;
+            return [...prev, payload.new];
+          });
+          scrollToBottom();
         }
       )
-      .subscribe()
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel)
