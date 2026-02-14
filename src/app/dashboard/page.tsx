@@ -159,7 +159,7 @@ const handleOpenChat = async (jobId: string, applicationId: string, otherUserId:
         .single()
 
       if (error) {
-        // If we hit a race condition and it was just created by someone else, fetch it again
+        // If we hit a race condition and it was just created by the other person
         if (error.code === '23505') { // Unique violation code
            const { data: retryChat } = await supabase
              .from('conversations')
