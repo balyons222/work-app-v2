@@ -35,6 +35,7 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
         }, 
         (payload) => {
           // Double-check for duplicates to ensure UI remains clean
+          console.log('Realtime message received:', payload.new);
           setMessages((prev) => {
             const exists = prev.some(m => m.id === payload.new.id);
             if (exists) return prev;
