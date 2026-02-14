@@ -129,7 +129,7 @@ const handleOpenChat = async (jobId: string, applicationId: string, workerId: st
         .single()
 
       if (error) {
-         if (error.code === '23505') { 
+         if (error.code === '23505') { // Handle unique constraint error
            const { data: retryChat } = await supabase.from('conversations').select('id').eq('application_id', applicationId).single()
            if (retryChat) setActiveChat({ id: retryChat.id, name: workerName })
          } else {
