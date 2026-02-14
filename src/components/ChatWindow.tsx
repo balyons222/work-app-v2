@@ -19,15 +19,19 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
   
   const supabase = createClient()
 
-  // 1. Initial Load
+  // 1. Fetch History
   useEffect(() => {
+    console.log("🔄 Fetching history for:", conversationId)
     fetchMessages()
   }, [conversationId])
 
-  // 2. Realtime Subscription setup
+  // 2. Realtime Listener
   useEffect(() => {
+    const channelName = `chat_${conversationId}`
+    console.log("🔌 Subscribing to channel:", channelName)
+
     const channel = supabase
-      .channel(`chat_${conversationId}`) 
+      .channel(channelName) 
       .on('postgres_changes', 
         { 
           event: 'INSERT', 
@@ -36,34 +40,34 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
           filter: `conversation_id=eq.${conversationId}` 
         }, 
         (payload) => {
-          console.log('⚡️ NEW REALTIME EVENT:', payload.new);
+          console.log('⚡️ REALTIME EVENT RECEIVED', payload.new);
           
+          // ⚠️ DIAGNOSTIC: Logic inside the setter to see what React "sees"
           setMessages((prev) => {
-            // Prevent duplicates
-            if (prev.some(m => m.id === payload.new.id)) {
-              console.log('Duplicate message ignored');
-              return prev;
-            }
-            console.log('Adding new message to state...');
+            console.log(`📊 Current Message Count: ${prev.length}`);
+            
+            // Check if it's a duplicate
+            const isDuplicate = prev.some(m => m.id === payload.new.id);
+            console.log(`🧐 Is Duplicate? ${isDuplicate ? 'YES (Ignored)' : 'NO (Adding)'}`);
+
+            if (isDuplicate) return prev;
+
             return [...prev, payload.new];
           });
         }
       )
-      .subscribe((status) => {
-        console.log(`🔌 Channel Status: ${status}`);
-      });
+      .subscribe((status) => console.log(`📡 Subscription Status: ${status}`));
 
     return () => {
+      console.log("🔌 Unsubscribing...")
       supabase.removeChannel(channel)
     }
   }, [conversationId])
 
-  // 3. Auto-Scroll triggers WHENEVER messages change
+  // 3. Auto-scroll
   useEffect(() => {
     if (messages.length > 0) {
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-      }, 100)
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
     }
   }, [messages])
 
@@ -75,9 +79,9 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
       .order('created_at', { ascending: true })
 
     if (error) {
-      console.error(error)
       toast.error('Failed to load chat')
     } else {
+      console.log("📥 History Loaded:", data?.length, "messages");
       setMessages(data || [])
     }
     setLoading(false)
@@ -90,9 +94,6 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
     const msgContent = newMessage.trim()
     setNewMessage('') 
 
-    // Optimistic Update (Optional: Remove if you prefer waiting for DB)
-    // setMessages(prev => [...prev, { id: 'temp-' + Date.now(), content: msgContent, sender_id: currentUserId, is_temp: true }])
-
     const { error } = await supabase.from('messages').insert({
       conversation_id: conversationId,
       sender_id: currentUserId,
@@ -101,63 +102,51 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
 
     if (error) {
       toast.error('Failed to send')
-      setNewMessage(msgContent)
+      console.error(error)
     }
   }
 
   return (
-    <div className="fixed bottom-0 right-4 w-96 h-[500px] bg-white rounded-t-2xl shadow-2xl border border-slate-200 flex flex-col z-[100] animate-in slide-in-from-bottom-10">
+    <div className="fixed bottom-0 right-4 w-96 h-[500px] bg-white rounded-t-2xl shadow-2xl border border-slate-200 flex flex-col z-[100]">
       
-      {/* HEADER */}
+      {/* HEADER WITH DEBUG INFO */}
       <div className="p-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl flex justify-between items-center">
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
-          <div>
-            <span className="font-bold text-slate-900 block leading-none">{otherUserName}</span>
-            {/* 🛠️ DEBUG COUNTER: If this number goes up, the code is working */}
-            <span className="text-[10px] text-slate-400 font-mono">
-              Count: {messages.length} | ID: {conversationId.slice(0,4)}...
+          <div className="flex flex-col">
+            <span className="font-bold text-slate-900 leading-none">{otherUserName}</span>
+            {/* 🛠️ DEBUG DATA - Check these values! */}
+            <span className="text-[9px] text-slate-400 font-mono mt-1">
+              Me: {currentUserId?.slice(0,4)}... | Msgs: {messages.length}
             </span>
           </div>
         </div>
         <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
       </div>
 
-      {/* MESSAGES AREA */}
+      {/* MESSAGES */}
       <div className="flex-1 p-4 overflow-y-auto bg-white space-y-3">
         {loading ? (
-          <p className="text-center text-xs text-slate-400 mt-10">Loading history...</p>
+          <p className="text-center text-xs text-slate-400 mt-10">Loading...</p>
         ) : messages.length === 0 ? (
           <p className="text-center text-xs text-slate-300 mt-10">Start the conversation!</p>
         ) : (
-          messages.map((msg) => {
+          messages.map((msg, index) => {
             const isMe = msg.sender_id === currentUserId
-            
-            // Check for potential ID mismatch issues
-            if (!msg.sender_id) return null; 
-
             return (
-              <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                <div 
-                  className={`max-w-[80%] p-3 rounded-xl text-sm shadow-sm border ${
-                    isMe 
-                      ? 'bg-secondary text-white border-transparent rounded-br-none' 
-                      : 'bg-slate-100 text-slate-800 border-slate-200 rounded-bl-none'
-                  }`}
-                >
+              <div key={msg.id || index} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] p-3 rounded-xl text-sm border ${isMe ? 'bg-secondary text-white border-secondary rounded-br-none' : 'bg-slate-100 text-slate-800 border-slate-200 rounded-bl-none'}`}>
                   {msg.content}
-                  {/* Debug: Tiny timestamp to verify unique rendering */}
-                  {/* <div className="text-[8px] opacity-50 mt-1">{msg.created_at?.slice(11,16)}</div> */}
                 </div>
               </div>
             )
           })
         )}
-        <div ref={messagesEndRef} className="h-1" />
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* INPUT AREA */}
-      <form onSubmit={sendMessage} className="p-3 border-t border-slate-100 flex gap-2 bg-white">
+      {/* INPUT */}
+      <form onSubmit={sendMessage} className="p-3 border-t border-slate-100 flex gap-2">
         <input 
           type="text" 
           value={newMessage}
@@ -165,9 +154,7 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
           placeholder="Type a message..."
           className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-secondary text-sm"
         />
-        <button type="submit" disabled={!newMessage.trim()} className="bg-black text-white px-4 py-2 rounded-lg font-bold text-sm disabled:opacity-50 hover:bg-slate-800 transition-colors">
-          Send
-        </button>
+        <button type="submit" disabled={!newMessage.trim()} className="bg-black text-white px-4 py-2 rounded-lg font-bold text-sm disabled:opacity-50">Send</button>
       </form>
     </div>
   )
