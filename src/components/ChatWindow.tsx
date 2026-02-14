@@ -19,19 +19,15 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
   
   const supabase = createClient()
 
-  // 1. Fetch History
+  // 1. Load History
   useEffect(() => {
-    console.log("🔄 Fetching history for:", conversationId)
     fetchMessages()
   }, [conversationId])
 
-  // 2. Realtime Listener
+  // 2. Subscribe to Realtime
   useEffect(() => {
-    const channelName = `chat_${conversationId}`
-    console.log("🔌 Subscribing to channel:", channelName)
-
     const channel = supabase
-      .channel(channelName) 
+      .channel(`chat_${conversationId}`) 
       .on('postgres_changes', 
         { 
           event: 'INSERT', 
@@ -40,34 +36,26 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
           filter: `conversation_id=eq.${conversationId}` 
         }, 
         (payload) => {
-          console.log('⚡️ REALTIME EVENT RECEIVED', payload.new);
-          
-          // ⚠️ DIAGNOSTIC: Logic inside the setter to see what React "sees"
           setMessages((prev) => {
-            console.log(`📊 Current Message Count: ${prev.length}`);
-            
-            // Check if it's a duplicate
-            const isDuplicate = prev.some(m => m.id === payload.new.id);
-            console.log(`🧐 Is Duplicate? ${isDuplicate ? 'YES (Ignored)' : 'NO (Adding)'}`);
-
-            if (isDuplicate) return prev;
-
+            // Prevent duplicate rendering
+            if (prev.some(m => m.id === payload.new.id)) return prev;
             return [...prev, payload.new];
           });
         }
       )
-      .subscribe((status) => console.log(`📡 Subscription Status: ${status}`));
+      .subscribe();
 
     return () => {
-      console.log("🔌 Unsubscribing...")
       supabase.removeChannel(channel)
     }
   }, [conversationId])
 
-  // 3. Auto-scroll
+  // 3. Auto-scroll on new message
   useEffect(() => {
     if (messages.length > 0) {
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 100)
     }
   }, [messages])
 
@@ -81,7 +69,6 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
     if (error) {
       toast.error('Failed to load chat')
     } else {
-      console.log("📥 History Loaded:", data?.length, "messages");
       setMessages(data || [])
     }
     setLoading(false)
@@ -102,40 +89,48 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
 
     if (error) {
       toast.error('Failed to send')
-      console.error(error)
+      setNewMessage(msgContent) // Restore text on failure
     }
   }
 
   return (
-    <div className="fixed bottom-0 right-4 w-96 h-[500px] bg-white rounded-t-2xl shadow-2xl border border-slate-200 flex flex-col z-[100]">
+    <div className="fixed bottom-0 right-4 w-80 md:w-96 h-[500px] bg-white rounded-t-2xl shadow-2xl border border-slate-200 flex flex-col z-[100] animate-in slide-in-from-bottom-10">
       
-      {/* HEADER WITH DEBUG INFO */}
+      {/* HEADER */}
       <div className="p-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
-          <div className="flex flex-col">
-            <span className="font-bold text-slate-900 leading-none">{otherUserName}</span>
-            {/* 🛠️ DEBUG DATA - Check these values! */}
-            <span className="text-[9px] text-slate-400 font-mono mt-1">
-              Me: {currentUserId?.slice(0,4)}... | Msgs: {messages.length}
-            </span>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="h-8 w-8 bg-slate-200 rounded-full flex items-center justify-center text-xs font-bold text-slate-500">
+              {otherUserName.charAt(0)}
+            </div>
+            <div className="absolute bottom-0 right-0 h-2.5 w-2.5 bg-green-500 border-2 border-white rounded-full"></div>
+          </div>
+          <div>
+            <span className="font-bold text-slate-900 block text-sm">{otherUserName}</span>
+            <span className="text-[10px] text-slate-400 font-medium">Active Now</span>
           </div>
         </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold text-xl px-2">&times;</button>
       </div>
 
-      {/* MESSAGES */}
+      {/* MESSAGES AREA */}
       <div className="flex-1 p-4 overflow-y-auto bg-white space-y-3">
         {loading ? (
-          <p className="text-center text-xs text-slate-400 mt-10">Loading...</p>
+          <div className="flex justify-center mt-10"><div className="animate-spin h-5 w-5 border-2 border-slate-300 border-t-transparent rounded-full"></div></div>
         ) : messages.length === 0 ? (
-          <p className="text-center text-xs text-slate-300 mt-10">Start the conversation!</p>
+          <p className="text-center text-xs text-slate-300 mt-10">Say hello! 👋</p>
         ) : (
-          messages.map((msg, index) => {
+          messages.map((msg) => {
             const isMe = msg.sender_id === currentUserId
             return (
-              <div key={msg.id || index} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-3 rounded-xl text-sm border ${isMe ? 'bg-secondary text-white border-secondary rounded-br-none' : 'bg-slate-100 text-slate-800 border-slate-200 rounded-bl-none'}`}>
+              <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                <div 
+                  className={`max-w-[80%] px-4 py-2 rounded-2xl text-sm shadow-sm ${
+                    isMe 
+                      ? 'bg-black text-white rounded-br-none' 
+                      : 'bg-slate-100 text-slate-800 rounded-bl-none border border-slate-200'
+                  }`}
+                >
                   {msg.content}
                 </div>
               </div>
@@ -145,16 +140,22 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
         <div ref={messagesEndRef} />
       </div>
 
-      {/* INPUT */}
-      <form onSubmit={sendMessage} className="p-3 border-t border-slate-100 flex gap-2">
+      {/* INPUT AREA */}
+      <form onSubmit={sendMessage} className="p-3 border-t border-slate-100 flex gap-2 bg-white">
         <input 
           type="text" 
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
           placeholder="Type a message..."
-          className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-secondary text-sm"
+          className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-black/10 text-sm transition-all"
         />
-        <button type="submit" disabled={!newMessage.trim()} className="bg-black text-white px-4 py-2 rounded-lg font-bold text-sm disabled:opacity-50">Send</button>
+        <button 
+          type="submit" 
+          disabled={!newMessage.trim()} 
+          className="bg-black text-white px-4 py-2 rounded-xl font-bold text-sm disabled:opacity-50 hover:bg-slate-800 transition-colors"
+        >
+          Send
+        </button>
       </form>
     </div>
   )
