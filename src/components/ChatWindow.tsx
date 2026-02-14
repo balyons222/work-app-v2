@@ -19,10 +19,13 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
   
   const supabase = createClient()
 
+  // 1. Initial Load
   useEffect(() => {
     fetchMessages()
-    
-    // ✅ REALTIME SUBSCRIPTION
+  }, [conversationId])
+
+  // 2. Realtime Subscription setup
+  useEffect(() => {
     const channel = supabase
       .channel(`chat_${conversationId}`) 
       .on('postgres_changes', 
@@ -33,26 +36,35 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
           filter: `conversation_id=eq.${conversationId}` 
         }, 
         (payload) => {
-          console.log('💬 New Message Arrived:', payload.new);
+          console.log('⚡️ NEW REALTIME EVENT:', payload.new);
           
           setMessages((prev) => {
             // Prevent duplicates
-            if (prev.some(m => m.id === payload.new.id)) return prev;
+            if (prev.some(m => m.id === payload.new.id)) {
+              console.log('Duplicate message ignored');
+              return prev;
+            }
+            console.log('Adding new message to state...');
             return [...prev, payload.new];
           });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`🔌 Channel Status: ${status}`);
+      });
 
     return () => {
       supabase.removeChannel(channel)
     }
   }, [conversationId])
 
-  // ✅ AUTO-SCROLL EFFECT
-  // This triggers every time the 'messages' array changes
+  // 3. Auto-Scroll triggers WHENEVER messages change
   useEffect(() => {
-    scrollToBottom()
+    if (messages.length > 0) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 100)
+    }
   }, [messages])
 
   const fetchMessages = async () => {
@@ -71,19 +83,15 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
     setLoading(false)
   }
 
-  const scrollToBottom = () => {
-    // Small delay ensures the DOM has rendered the new message before we scroll to it
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 100)
-  }
-
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newMessage.trim()) return
 
     const msgContent = newMessage.trim()
-    setNewMessage('') // Clear input immediately
+    setNewMessage('') 
+
+    // Optimistic Update (Optional: Remove if you prefer waiting for DB)
+    // setMessages(prev => [...prev, { id: 'temp-' + Date.now(), content: msgContent, sender_id: currentUserId, is_temp: true }])
 
     const { error } = await supabase.from('messages').insert({
       conversation_id: conversationId,
@@ -106,8 +114,10 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
           <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
           <div>
             <span className="font-bold text-slate-900 block leading-none">{otherUserName}</span>
-            {/* Debug Counter - Remove later if desired */}
-            <span className="text-[10px] text-slate-400">{messages.length} messages</span>
+            {/* 🛠️ DEBUG COUNTER: If this number goes up, the code is working */}
+            <span className="text-[10px] text-slate-400 font-mono">
+              Count: {messages.length} | ID: {conversationId.slice(0,4)}...
+            </span>
           </div>
         </div>
         <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
@@ -122,16 +132,28 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
         ) : (
           messages.map((msg) => {
             const isMe = msg.sender_id === currentUserId
+            
+            // Check for potential ID mismatch issues
+            if (!msg.sender_id) return null; 
+
             return (
               <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-3 rounded-xl text-sm shadow-sm ${isMe ? 'bg-secondary text-white rounded-br-none' : 'bg-slate-100 text-slate-700 rounded-bl-none border border-slate-200'}`}>
+                <div 
+                  className={`max-w-[80%] p-3 rounded-xl text-sm shadow-sm border ${
+                    isMe 
+                      ? 'bg-secondary text-white border-transparent rounded-br-none' 
+                      : 'bg-slate-100 text-slate-800 border-slate-200 rounded-bl-none'
+                  }`}
+                >
                   {msg.content}
+                  {/* Debug: Tiny timestamp to verify unique rendering */}
+                  {/* <div className="text-[8px] opacity-50 mt-1">{msg.created_at?.slice(11,16)}</div> */}
                 </div>
               </div>
             )
           })
         )}
-        <div ref={messagesEndRef} />
+        <div ref={messagesEndRef} className="h-1" />
       </div>
 
       {/* INPUT AREA */}
