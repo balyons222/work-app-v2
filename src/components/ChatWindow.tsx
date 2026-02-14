@@ -23,7 +23,6 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
     fetchMessages()
     
     // ✅ REALTIME SUBSCRIPTION
-    // Using an underscore in the channel name is safer
     const channel = supabase
       .channel(`chat_${conversationId}`) 
       .on('postgres_changes', 
@@ -33,20 +32,15 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
           table: 'messages', 
           filter: `conversation_id=eq.${conversationId}` 
         }, 
-(payload) => {
-  console.log('Payload received:', payload.new); // Keep this for debugging
-  
-  setMessages((prev) => {
-    // 1. Prevent duplicates
-    if (prev.some(m => m.id === payload.new.id)) return prev;
-    
-    // 2. Add new message
-    return [...prev, payload.new];
-  });
-  
-  // 3. Scroll AFTER the state update is processed
-  setTimeout(() => scrollToBottom(), 100); 
-}
+        (payload) => {
+          console.log('💬 New Message Arrived:', payload.new);
+          
+          setMessages((prev) => {
+            // Prevent duplicates
+            if (prev.some(m => m.id === payload.new.id)) return prev;
+            return [...prev, payload.new];
+          });
+        }
       )
       .subscribe();
 
@@ -54,6 +48,12 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
       supabase.removeChannel(channel)
     }
   }, [conversationId])
+
+  // ✅ AUTO-SCROLL EFFECT
+  // This triggers every time the 'messages' array changes
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
 
   const fetchMessages = async () => {
     const { data, error } = await supabase
@@ -67,12 +67,12 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
       toast.error('Failed to load chat')
     } else {
       setMessages(data || [])
-      scrollToBottom()
     }
     setLoading(false)
   }
 
   const scrollToBottom = () => {
+    // Small delay ensures the DOM has rendered the new message before we scroll to it
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, 100)
@@ -83,19 +83,17 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
     if (!newMessage.trim()) return
 
     const msgContent = newMessage.trim()
-    setNewMessage('') // Clear input immediately for better UX
+    setNewMessage('') // Clear input immediately
 
-    const { error } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversationId,
-        sender_id: currentUserId,
-        content: msgContent
-      })
+    const { error } = await supabase.from('messages').insert({
+      conversation_id: conversationId,
+      sender_id: currentUserId,
+      content: msgContent
+    })
 
     if (error) {
       toast.error('Failed to send')
-      setNewMessage(msgContent) // Restore text on fail
+      setNewMessage(msgContent)
     }
   }
 
@@ -106,7 +104,11 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
       <div className="p-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl flex justify-between items-center">
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="font-bold text-slate-900">{otherUserName}</span>
+          <div>
+            <span className="font-bold text-slate-900 block leading-none">{otherUserName}</span>
+            {/* Debug Counter - Remove later if desired */}
+            <span className="text-[10px] text-slate-400">{messages.length} messages</span>
+          </div>
         </div>
         <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
       </div>
@@ -122,7 +124,7 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
             const isMe = msg.sender_id === currentUserId
             return (
               <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-3 rounded-xl text-sm ${isMe ? 'bg-secondary text-white rounded-br-none' : 'bg-slate-100 text-slate-700 rounded-bl-none'}`}>
+                <div className={`max-w-[80%] p-3 rounded-xl text-sm shadow-sm ${isMe ? 'bg-secondary text-white rounded-br-none' : 'bg-slate-100 text-slate-700 rounded-bl-none border border-slate-200'}`}>
                   {msg.content}
                 </div>
               </div>
@@ -133,7 +135,7 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
       </div>
 
       {/* INPUT AREA */}
-      <form onSubmit={sendMessage} className="p-3 border-t border-slate-100 flex gap-2">
+      <form onSubmit={sendMessage} className="p-3 border-t border-slate-100 flex gap-2 bg-white">
         <input 
           type="text" 
           value={newMessage}
@@ -141,7 +143,7 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
           placeholder="Type a message..."
           className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-secondary text-sm"
         />
-        <button type="submit" disabled={!newMessage.trim()} className="bg-black text-white px-4 py-2 rounded-lg font-bold text-sm disabled:opacity-50">
+        <button type="submit" disabled={!newMessage.trim()} className="bg-black text-white px-4 py-2 rounded-lg font-bold text-sm disabled:opacity-50 hover:bg-slate-800 transition-colors">
           Send
         </button>
       </form>
