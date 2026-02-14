@@ -104,15 +104,14 @@ export default function EventManagerPage() {
   }
 
   // ✅ CHAT HANDLER
-  const handleOpenChat = async (jobId: string, applicationId: string, workerId: string, workerName: string) => {
+const handleOpenChat = async (jobId: string, applicationId: string, workerId: string, workerName: string) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
     const { data: existingChat } = await supabase
       .from('conversations')
       .select('id')
-      .eq('job_id', jobId)
-      .eq('application_id', applicationId)
+      .eq('application_id', applicationId) // ✅ Match by unique Application ID
       .maybeSingle()
 
     if (existingChat) {
@@ -130,14 +129,17 @@ export default function EventManagerPage() {
         .single()
 
       if (error) {
-        console.error("Chat Start Error:", error)
-        toast.error('Failed to start chat')
+         if (error.code === '23505') { 
+           const { data: retryChat } = await supabase.from('conversations').select('id').eq('application_id', applicationId).single()
+           if (retryChat) setActiveChat({ id: retryChat.id, name: workerName })
+         } else {
+           toast.error('Failed to start chat')
+         }
       } else {
         setActiveChat({ id: newChat.id, name: workerName })
       }
     }
   }
-
   // --- EVENT EDITING ---
   const handleEventChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setEventFormData({ ...eventFormData, [e.target.name]: e.target.value })
