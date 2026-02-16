@@ -19,12 +19,13 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
   
   const supabase = createClient()
 
-  // 1. Load History
+  // ✅ 1. Combined Initial Load & Mark as Read
   useEffect(() => {
     fetchMessages()
+    markAsRead()
   }, [conversationId])
 
-  // 2. Subscribe to Realtime
+  // ✅ 2. Subscribe to Realtime
   useEffect(() => {
     const channel = supabase
       .channel(`chat_${conversationId}`) 
@@ -37,10 +38,14 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
         }, 
         (payload) => {
           setMessages((prev) => {
-            // Prevent duplicate rendering
             if (prev.some(m => m.id === payload.new.id)) return prev;
             return [...prev, payload.new];
           });
+          
+          // ✅ Mark incoming message as read if window is open
+          if (payload.new.sender_id !== currentUserId) {
+            markAsRead();
+          }
         }
       )
       .subscribe();
@@ -59,6 +64,8 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
     }
   }, [messages])
 
+  // --- HELPER FUNCTIONS ---
+
   const fetchMessages = async () => {
     const { data, error } = await supabase
       .from('messages')
@@ -74,6 +81,17 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
     setLoading(false)
   }
 
+  const markAsRead = async () => {
+    const { error } = await supabase
+      .from('messages')
+      .update({ is_read: true })
+      .eq('conversation_id', conversationId)
+      .eq('is_read', false)
+      .neq('sender_id', currentUserId); 
+
+    if (error) console.error('Error marking as read:', error);
+  };
+
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newMessage.trim()) return
@@ -84,19 +102,19 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
     const { error } = await supabase.from('messages').insert({
       conversation_id: conversationId,
       sender_id: currentUserId,
-      content: msgContent
+      content: msgContent,
+      is_read: false // Default to unread for the recipient
     })
 
     if (error) {
       toast.error('Failed to send')
-      setNewMessage(msgContent) // Restore text on failure
+      setNewMessage(msgContent)
     }
   }
 
   return (
     <div className="fixed bottom-0 right-4 w-80 md:w-96 h-[500px] bg-white rounded-t-2xl shadow-2xl border border-slate-200 flex flex-col z-[100] animate-in slide-in-from-bottom-10">
-      
-      {/* HEADER */}
+      {/* ... (Keep your existing JSX) ... */}
       <div className="p-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl flex justify-between items-center">
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -113,7 +131,6 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
         <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold text-xl px-2">&times;</button>
       </div>
 
-      {/* MESSAGES AREA */}
       <div className="flex-1 p-4 overflow-y-auto bg-white space-y-3">
         {loading ? (
           <div className="flex justify-center mt-10"><div className="animate-spin h-5 w-5 border-2 border-slate-300 border-t-transparent rounded-full"></div></div>
@@ -140,7 +157,6 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
         <div ref={messagesEndRef} />
       </div>
 
-      {/* INPUT AREA */}
       <form onSubmit={sendMessage} className="p-3 border-t border-slate-100 flex gap-2 bg-white">
         <input 
           type="text" 
