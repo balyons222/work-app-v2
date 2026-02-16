@@ -135,7 +135,8 @@ function DashboardContent() {
     const { data: existingChat } = await supabase.from('conversations').select('id').eq('application_id', applicationId).maybeSingle()
 
     if (existingChat) {
-      setActiveChat({ id: existingChat.id, name: otherName })
+      setActiveChat({ id: existingChat.id, name: otherName });
+      setUnreadCount(0);
     } else {
       const { data: newChat, error } = await supabase.from('conversations').insert({
           job_id: jobId,
@@ -149,6 +150,7 @@ function DashboardContent() {
            if (retryChat) setActiveChat({ id: retryChat.id, name: otherName })
       } else if (!error) {
         setActiveChat({ id: newChat.id, name: otherName })
+        setUnreadCount(0);
       }
     }
   }
