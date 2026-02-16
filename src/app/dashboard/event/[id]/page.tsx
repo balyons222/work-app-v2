@@ -20,14 +20,14 @@ export default function EventManagerPage() {
   const [event, setEvent] = useState<any>(null)
   const [jobs, setJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  
+   
   // EVENT DETAILS STATE
   const [isEditingEvent, setIsEditingEvent] = useState(false)
   const [eventFormData, setEventFormData] = useState({
     title: '', location: '', event_date: '', budget: '', 
     description: '', website: '', poc_name: '', poc_phone: '', visibility: 'public'
   })
-  
+   
   // MODAL STATES
   const [inviteModalData, setInviteModalData] = useState<{ open: boolean, jobId?: string, jobTitle?: string }>({ open: false })
   const [showJobForm, setShowJobForm] = useState(false)
@@ -177,8 +177,8 @@ const handleOpenChat = async (jobId: string, applicationId: string, workerId: st
     setSelectedRole(job.title)
     setRate(job.rate.toString())
     setJobDescription(job.description || '')
-    setStartDate(job.start_date)
-    setEndDate(job.end_date)
+    setStartDate(job.start_date || '')
+    setEndDate(job.end_date || '')
     setRateType(job.rate_type || 'flat')
     setEstimatedHours(job.estimated_hours ? job.estimated_hours.toString() : '')
     setShowJobForm(true)
@@ -308,11 +308,11 @@ const handleOpenChat = async (jobId: string, applicationId: string, workerId: st
               </div>
               <div className="w-full md:w-80 bg-slate-50 p-6 rounded-2xl border border-slate-200">
                 <div className="flex justify-between items-start mb-4">
-                   <div>
-                     <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Labor Budget</p>
-                     <p className="text-3xl font-black text-slate-900">${totalBudget.toLocaleString()}</p>
-                   </div>
-                   <button onClick={() => setInviteModalData({ open: true })} className="bg-black text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 flex items-center gap-2 shadow-md">✉️ Invite</button>
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Labor Budget</p>
+                      <p className="text-3xl font-black text-slate-900">${totalBudget.toLocaleString()}</p>
+                    </div>
+                    <button onClick={() => setInviteModalData({ open: true })} className="bg-black text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 flex items-center gap-2 shadow-md">✉️ Invite</button>
                 </div>
                 <div className="space-y-3">
                   <div className="flex justify-between text-xs font-bold text-slate-500"><span>Allocated</span><span>${allocatedBudget.toLocaleString()}</span></div>
@@ -349,66 +349,148 @@ const handleOpenChat = async (jobId: string, applicationId: string, workerId: st
         </div>
 
         {showJobForm && (
-          <div className="bg-white p-8 rounded-2xl border mb-8">
+          <div className="bg-white p-8 rounded-2xl border mb-8 shadow-lg animate-in fade-in slide-in-from-top-4">
+            <h3 className="text-lg font-bold mb-4">{editingJobId ? 'Edit Role' : 'Create New Role'}</h3>
             <form onSubmit={handleSaveJob} className="space-y-6">
+              {/* Role Selector */}
               <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl" required>
                 <option value="">Select a Role...</option>
                 {Object.entries(ROLE_CATEGORIES).map(([cat, roles]) => (
                   <optgroup key={cat} label={cat}>{roles.map(r => <option key={r} value={r}>{r}</option>)}</optgroup>
                 ))}
               </select>
-              <div className="flex gap-4">
-                <select value={rateType} onChange={(e) => setRateType(e.target.value)} className="w-1/2 p-3 border rounded-xl">
-                  <option value="flat">Flat Rate</option>
-                  <option value="hourly">Hourly</option>
-                </select>
-                <input type="number" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="Rate" className="w-1/2 p-3 border rounded-xl" required />
+              
+              {/* ✅ ADDED: Description Field */}
+              <textarea 
+                value={jobDescription} 
+                onChange={(e) => setJobDescription(e.target.value)} 
+                placeholder="Job Description & Requirements (e.g. 'Must be able to lift 50lbs', 'Wear all black')" 
+                className="w-full p-3 bg-slate-50 border rounded-xl h-24" 
+              />
+
+              {/* ✅ ADDED: Date Pickers */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col">
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1">Start Date</label>
+                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="p-3 bg-slate-50 border rounded-xl" required />
+                </div>
+                <div className="flex flex-col">
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1">End Date</label>
+                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="p-3 bg-slate-50 border rounded-xl" required />
+                </div>
               </div>
-              <button type="submit" className="w-full bg-secondary text-white font-bold py-4 rounded-xl">Save Role</button>
+
+              {/* Rate & Hours */}
+              <div className="flex gap-4 items-end">
+                <div className="w-1/3">
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1">Pay Type</label>
+                    <select value={rateType} onChange={(e) => setRateType(e.target.value)} className="w-full p-3 border rounded-xl">
+                      <option value="flat">Flat Rate</option>
+                      <option value="hourly">Hourly</option>
+                    </select>
+                </div>
+                <div className="w-1/3">
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1">Rate ($)</label>
+                    <input type="number" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="0.00" className="w-full p-3 border rounded-xl" required />
+                </div>
+                {/* ✅ ADDED: Estimated Hours Input (Conditional) */}
+                {rateType === 'hourly' && (
+                    <div className="w-1/3 animate-in fade-in">
+                        <label className="text-xs font-bold text-slate-400 uppercase mb-1">Est. Hours</label>
+                        <input type="number" value={estimatedHours} onChange={(e) => setEstimatedHours(e.target.value)} placeholder="8" className="w-full p-3 border rounded-xl" required />
+                    </div>
+                )}
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 flex justify-end gap-3">
+                  <button type="button" onClick={resetForm} className="px-6 py-3 font-bold text-slate-400 hover:text-slate-600">Cancel</button>
+                  <button type="submit" className="bg-secondary text-white font-bold px-8 py-3 rounded-xl hover:bg-teal-600 transition-colors shadow-md">
+                      {editingJobId ? 'Update Role' : 'Save Role'}
+                  </button>
+              </div>
             </form>
           </div>
         )}
 
         {/* APPLICANT CARDS */}
         <div className="space-y-6">
-          {jobs.map(job => (
-            <div key={job.id} className="bg-white rounded-2xl border shadow-sm">
-              <div className="p-6 bg-slate-50/50 border-b flex justify-between items-center">
-                <div>
-                  <h3 className="text-xl font-black text-primary">{job.title}</h3>
-                  <p className="text-sm font-bold text-slate-500">${job.rate} {job.rate_type}</p>
-                </div>
-                <div className="flex gap-3">
-                  <button onClick={() => setInviteModalData({ open: true, jobId: job.id, jobTitle: job.title })} className="text-xs font-bold uppercase text-slate-400 hover:text-secondary">✉️ Invite</button>
-                  <button onClick={() => handleDeleteJob(job.id)} className="text-xs font-bold uppercase text-slate-400 hover:text-red-600">Delete</button>
-                </div>
-              </div>
-              <div className="p-6 space-y-3">
-                {job.applications?.map((app: any) => (
-                  <div key={app.id} className="flex items-center justify-between p-4 bg-white border rounded-xl shadow-sm">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 bg-slate-200 rounded-full overflow-hidden">
-                        {app.profiles?.avatar_url && <img src={app.profiles.avatar_url} className="object-cover h-full w-full" />}
+          {jobs.map(job => {
+            // ✅ ADDED: Total Pay Calculation
+            const estimatedTotal = job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate;
+
+            return (
+                <div key={job.id} className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+                  <div className="p-6 bg-slate-50/50 border-b flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                      <h3 className="text-xl font-black text-primary">{job.title}</h3>
+                      <div className="flex items-center gap-4 mt-1 text-sm text-slate-600">
+                          {/* ✅ ADDED: Display Dates & Description */}
+                          <span className="font-bold bg-white border px-2 py-0.5 rounded">
+                            {job.start_date ? new Date(job.start_date).toLocaleDateString() : 'TBD'} 
+                            {job.end_date && job.end_date !== job.start_date ? ` - ${new Date(job.end_date).toLocaleDateString()}` : ''}
+                          </span>
+                          <span className="text-slate-400">|</span>
+                          <span className="font-bold text-green-600">
+                            ${job.rate}/{job.rate_type === 'hourly' ? 'hr' : 'flat'}
+                            {job.rate_type === 'hourly' && <span className="text-slate-400 font-normal text-xs ml-1">(Est. Total: ${estimatedTotal})</span>}
+                          </span>
                       </div>
-                      <div>
-                        <Link href={`/profile/${app.applicant_id}`} className="font-bold hover:underline">{app.profiles?.full_name}</Link>
-                        <p className="text-xs text-slate-400 uppercase font-bold">{app.status}</p>
-                      </div>
+                      {job.description && <p className="text-xs text-slate-500 mt-2 max-w-xl">{job.description}</p>}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => handleOpenChat(job.id, app.id, app.applicant_id, app.profiles?.full_name)} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-lg">💬 Chat</button>
-                      {app.status === 'pending' && (
-                        <>
-                          <button onClick={() => handleAppStatus(app.id, 'rejected')} className="px-3 py-1 text-xs font-bold text-red-500 bg-red-50 rounded-lg">Decline</button>
-                          <button onClick={() => handleAppStatus(app.id, 'approved')} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-lg">Hire</button>
-                        </>
-                      )}
+                    <div className="flex gap-3">
+                      <button onClick={() => handleEditClick(job)} className="text-xs font-bold uppercase text-slate-400 hover:text-primary">✎ Edit</button>
+                      <button onClick={() => setInviteModalData({ open: true, jobId: job.id, jobTitle: job.title })} className="text-xs font-bold uppercase text-slate-400 hover:text-secondary">✉️ Invite</button>
+                      <button onClick={() => handleDeleteJob(job.id)} className="text-xs font-bold uppercase text-slate-400 hover:text-red-600">Delete</button>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          ))}
+                  
+                  {/* Applications List */}
+                  <div className="p-6 space-y-3 bg-white">
+                    {job.applications?.length === 0 ? (
+                        <p className="text-center text-sm text-slate-300 italic py-2">No applicants yet.</p>
+                    ) : (
+                        job.applications?.map((app: any) => (
+                          <div key={app.id} className="flex items-center justify-between p-4 bg-white border rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 bg-slate-200 rounded-full overflow-hidden">
+                                {app.profiles?.avatar_url && <img src={app.profiles.avatar_url} className="object-cover h-full w-full" />}
+                              </div>
+                              <div>
+                                <Link href={`/profile/${app.applicant_id}`} className="font-bold hover:underline text-primary">{app.profiles?.full_name}</Link>
+                                <p className={`text-xs uppercase font-bold ${
+                                    app.status === 'approved' ? 'text-green-600' : 
+                                    app.status === 'rejected' ? 'text-red-400' : 'text-slate-400'
+                                }`}>{app.status}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => handleOpenChat(job.id, app.id, app.applicant_id, app.profiles?.full_name)} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">💬 Chat</button>
+                              
+                              {app.status === 'pending' && (
+                                <>
+                                  <button onClick={() => handleAppStatus(app.id, 'rejected')} className="px-3 py-1.5 text-xs font-bold text-red-500 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">Decline</button>
+                                  <button onClick={() => handleAppStatus(app.id, 'approved')} className="px-3 py-1.5 text-xs font-bold text-white bg-green-500 rounded-lg hover:bg-green-600 transition-colors shadow-sm">Hire</button>
+                                </>
+                              )}
+                              
+                              {app.status === 'approved' && app.payment_status !== 'paid' && (
+                                  <button onClick={() => handleMarkPaid(app.id)} className="px-3 py-1.5 text-xs font-bold text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors">Mark Paid</button>
+                              )}
+                              
+                              {app.payment_status === 'paid' && (
+                                  <div className="flex gap-2">
+                                      <span className="px-3 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 rounded-lg border border-slate-200">Paid</span>
+                                      <button onClick={() => openReviewModal(app, job)} className="px-3 py-1.5 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100">Rate</button>
+                                  </div>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                    )}
+                  </div>
+                </div>
+            )
+          })}
         </div>
       </div>
 
@@ -417,8 +499,16 @@ const handleOpenChat = async (jobId: string, applicationId: string, workerId: st
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full">
             <h3 className="text-2xl font-black mb-4">Review {reviewTarget?.name}</h3>
-            <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl h-32 mb-6" />
-            <button onClick={submitReview} className="w-full bg-secondary text-white font-bold py-3 rounded-xl">Submit</button>
+            <div className="flex gap-2 mb-4">
+                {[1,2,3,4,5].map(star => (
+                    <button key={star} onClick={() => setRating(star)} className={`text-2xl ${rating >= star ? 'text-yellow-400' : 'text-slate-200'}`}>★</button>
+                ))}
+            </div>
+            <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl h-32 mb-6" placeholder="Leave a comment..." />
+            <div className="flex gap-3">
+                <button onClick={() => setReviewModalOpen(false)} className="flex-1 py-3 font-bold text-slate-400">Cancel</button>
+                <button onClick={submitReview} className="flex-1 bg-secondary text-white font-bold py-3 rounded-xl">Submit</button>
+            </div>
           </div>
         </div>
       )}
@@ -427,7 +517,7 @@ const handleOpenChat = async (jobId: string, applicationId: string, workerId: st
         <InviteTalentModal eventId={eventId} jobId={inviteModalData.jobId} jobTitle={inviteModalData.jobTitle} onClose={() => setInviteModalData({ open: false })} />
       )}
 
-      {/* ✅ 5. CORRECTED CHAT WINDOW LOGIC */}
+      {/* ✅ CORRECTED CHAT WINDOW LOGIC */}
       {activeChat && event && (
         <ChatWindow 
           conversationId={activeChat.id}
