@@ -18,6 +18,8 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   const [showTerms, setShowTerms] = useState(false)
+  
+  // Event Form State
   const [title, setTitle] = useState('')
   const [location, setLocation] = useState('')
   const [date, setDate] = useState('')
@@ -27,6 +29,8 @@ function DashboardContent() {
   const [pocName, setPocName] = useState('')
   const [pocPhone, setPocPhone] = useState('')
   const [visibility, setVisibility] = useState('public')
+
+  // Review & Chat State
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
   const [reviewTarget, setReviewTarget] = useState<any>(null)
   const [rating, setRating] = useState(5)
@@ -41,7 +45,7 @@ function DashboardContent() {
     loadDashboardData()
   }, [])
 
-  // ✅ Global Notification Listener
+  // Global Notification Listener
   useEffect(() => {
     if (!profile?.id) return
 
@@ -78,6 +82,7 @@ function DashboardContent() {
       const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       setProfile(profileData)
 
+      // --- ORGANIZER DATA FETCH ---
       if (profileData?.role?.toLowerCase() === 'organizer') {
         const { data: eventsData } = await supabase
           .from('events')
@@ -92,13 +97,22 @@ function DashboardContent() {
         })) || [])
       }
 
+      // --- CONTRACTOR DATA FETCH ---
       if (profileData?.role?.toLowerCase() === 'contractor') {
+        
+        // ✅ FIXED QUERY: Fetch Event details THROUGH the Job relation
         const { data: invitesData } = await supabase
           .from('event_invitations')
           .select(`
             id, status, 
-            events ( id, title, location, event_date, organizer_id, profiles:organizer_id (full_name) ),
-            jobs ( title )
+            jobs (
+                id,
+                title,
+                events (
+                    id, title, location, event_date, organizer_id,
+                    profiles:organizer_id (full_name)
+                )
+            )
           `)
           .eq('invitee_id', user.id)
           .eq('status', 'pending')
@@ -200,15 +214,20 @@ function DashboardContent() {
   }
 
   const handleInviteResponse = async (inviteId: string, response: 'accepted' | 'declined', eventId: string) => {
+    // 1. Update the invitation status
     const { error } = await supabase.from('event_invitations').update({ status: response }).eq('id', inviteId)
+    
     if (!error) {
       if (response === 'accepted') {
         toast.success("Invite Accepted!")
+        // 2. Redirect to the Event page (or Job page if preferred)
         router.push(`/events/${eventId}`) 
       } else {
         toast.success("Invite Declined")
         setInvites(current => current.filter(i => i.id !== inviteId))
       }
+    } else {
+        toast.error("Error updating invite")
     }
   }
 
@@ -267,6 +286,7 @@ function DashboardContent() {
           <Link href="/setup-profile" className="w-full md:w-auto text-center px-6 py-2 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-all">Edit Profile</Link>
         </div>
 
+        {/* CONTRACTOR DASHBOARD */}
         {profile?.role?.toLowerCase() === 'contractor' && (
           <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
              {activeTab === 'reports' ? (
@@ -289,25 +309,36 @@ function DashboardContent() {
                  </div>
              ) : (
                  <div className="space-y-10">
+                    
+                    {/* ✅ INVITES SECTION (Fixed Logic) */}
                     {invites.length > 0 && (
                       <section>
                         <div className="bg-gradient-to-r from-purple-900 to-indigo-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
                            <div className="relative z-10">
                             <h2 className="text-xl font-black mb-4 flex items-center gap-2">🎟️ You're Invited! <span className="bg-white/20 text-xs px-2 py-1 rounded-full">{invites.length}</span></h2>
                              <div className="grid gap-4 md:grid-cols-2">
-                              {invites.map(invite => (
+                              {invites.map(invite => {
+                                // Fallback logic: Ensure we can read data even if structure varies
+                                const eventTitle = invite.jobs?.events?.title || invite.jobs?.title || 'Event Invitation'
+                                const organizerName = invite.jobs?.events?.profiles?.full_name || 'FXD Organizer'
+                                const eventLocation = invite.jobs?.events?.location || 'TBD'
+                                const eventDate = invite.jobs?.events?.event_date 
+                                const eventId = invite.jobs?.events?.id
+
+                                return (
                                 <div key={invite.id} className="bg-white/10 backdrop-blur-sm p-4 rounded-xl border border-white/20 flex justify-between items-center">
                                   <div>
-                                    <h3 className="font-bold text-lg text-white">{invite.events?.title}</h3>
-                                    <p className="text-xs text-indigo-200 font-bold uppercase mb-1">Hosted by: {invite.events?.profiles?.full_name || 'FXD Organizer'}</p>
-                                    <p className="text-sm text-indigo-200">📍 {invite.events?.location} • 📅 {new Date(invite.events?.event_date).toLocaleDateString()}</p>
+                                    <h3 className="font-bold text-lg text-white">{eventTitle}</h3>
+                                    <p className="text-xs text-indigo-200 font-bold uppercase mb-1">Hosted by: {organizerName}</p>
+                                    <p className="text-sm text-indigo-200">📍 {eventLocation} • 📅 {eventDate ? new Date(eventDate).toLocaleDateString() : 'Date TBD'}</p>
                                   </div>
                                   <div className="flex gap-2">
-                                    <button onClick={() => handleInviteResponse(invite.id, 'declined', invite.events?.id)} className="px-3 py-2 text-xs font-bold text-white/70 hover:bg-white/10 rounded-lg">Decline</button>
-                                    <button onClick={() => handleInviteResponse(invite.id, 'accepted', invite.events?.id)} className="px-4 py-2 text-xs font-bold bg-white text-indigo-900 rounded-lg">View & Apply</button>
+                                    <button onClick={() => handleInviteResponse(invite.id, 'declined', eventId)} className="px-3 py-2 text-xs font-bold text-white/70 hover:bg-white/10 rounded-lg">Decline</button>
+                                    <button onClick={() => handleInviteResponse(invite.id, 'accepted', eventId)} className="px-4 py-2 text-xs font-bold bg-white text-indigo-900 rounded-lg">View & Apply</button>
                                   </div>
                                 </div>
-                              ))}
+                                )
+                              })}
                              </div>
                            </div>
                         </div>
@@ -349,106 +380,4 @@ function DashboardContent() {
                         {pendingJobs.map(app => (
                           <div key={app.id} className="bg-white p-5 rounded-xl border border-slate-200">
                             <div className="flex justify-between mb-2">
-                              <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded uppercase">Under Review</span>
-                              <span className="font-bold text-slate-700">${app.jobs?.rate}</span>
-                            </div>
-                            <h4 className="font-bold text-slate-900">{app.jobs?.title}</h4>
-                            <p className="text-xs text-slate-500 mb-1">{app.jobs?.events?.title}</p>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase mb-3">Org: {app.jobs?.profiles?.full_name || 'FXD Organizer'}</p>
-                            <Link href={`/jobs/${app.jobs?.id}`} className="text-xs text-primary font-bold hover:underline">View Status &rarr;</Link>
-                          </div>
-                        ))}
-                       </div>
-                    </section>
-                 </div>
-             )}
-          </div>
-        )}
-
-        {profile?.role?.toLowerCase() === 'organizer' && (
-          <div className="space-y-8">
-             {activeTab === 'reports' ? (
-                <div className="space-y-6">
-                   <h2 className="text-xl font-black text-slate-900">Event Budget Analysis</h2>
-                   {events.map(event => (
-                      <div key={event.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                         <div className="flex justify-between mb-4">
-                           <h3 className="font-bold text-lg">{event.title}</h3>
-                           <span className={`text-xs font-bold px-2 py-1 rounded ${event.remaining_budget < 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>{event.remaining_budget < 0 ? 'OVER BUDGET' : 'On Track'}</span>
-                         </div>
-                         <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden mb-2">
-                           <div className={`h-full ${event.remaining_budget < 0 ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${Math.min((event.committed_spend / (event.budget || 1)) * 100, 100)}%` }}></div>
-                         </div>
-                         <div className="flex justify-between text-xs font-bold text-slate-500"><span>Spent: ${event.committed_spend}</span><span>Budget: ${event.budget}</span></div>
-                      </div>
-                   ))}
-                </div>
-             ) : (
-                <div className="space-y-8">
-                   <div className="flex justify-between items-end mb-8">
-                     <div><h2 className="text-2xl font-bold text-gray-900">Event Manager</h2><p className="text-gray-500">Manage your events and hiring budget.</p></div>
-                     <button onClick={handleCreateEventClick} className="bg-black text-white px-6 py-2 rounded-lg font-bold">{isCreating ? 'Cancel' : '+ Add Event'}</button>
-                   </div>
-                   {isCreating && (
-                      <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-8 animate-in fade-in slide-in-from-top-4">
-                        <h2 className="text-xl font-bold mb-4">1. Create New Event Container</h2>
-                        <form onSubmit={handleCreateEvent} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <input type="text" placeholder="Event Name" className="p-3 border rounded-lg" value={title} onChange={e => setTitle(e.target.value)} required />
-                           <input type="text" placeholder="Location" className="p-3 border rounded-lg" value={location} onChange={e => setLocation(e.target.value)} required />
-                           <div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Event Date</label><input type="date" className="p-3 border rounded-lg" value={date} onChange={e => setDate(e.target.value)} required /></div>
-                           <div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Visibility</label><select value={visibility} onChange={(e) => setVisibility(e.target.value)} className="p-3 border rounded-lg bg-white font-bold"><option value="public">🌍 Public</option><option value="private">🔒 Private</option></select></div>
-                           <input type="number" placeholder="Total Labor Budget" className="md:col-span-2 p-3 border rounded-lg" value={budget} onChange={e => setBudget(e.target.value)} required />
-                           <button type="submit" className="md:col-span-2 bg-secondary text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition-colors">Create Event & Start Staffing →</button>
-                        </form>
-                      </div>
-                   )}
-                   <div className="grid gap-6">
-                      {events.map(event => (
-                           <div key={event.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 group relative">
-                              <div onClick={() => router.push(`/dashboard/event/${event.id}`)} className="cursor-pointer">
-                                 <div className="flex justify-between items-start">
-                                    <div>
-                                       <h3 className="text-xl font-bold text-gray-900 group-hover:text-primary transition-colors">{event.title} &rarr;</h3>
-                                       <p className="text-sm text-gray-500 mt-1">📍 {event.location} • 📅 {event.event_date ? new Date(event.event_date).toLocaleDateString() : 'No date set'}</p>
-                                    </div>
-                                    <div className="text-right"><span className="text-xl font-bold text-green-700">${event.budget}</span></div>
-                                 </div>
-                              </div>
-                              <button onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event.id); }} className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-red-500 font-bold p-2">✕</button>
-                           </div>
-                      ))}
-                   </div>
-                </div>
-             )}
-          </div>
-        )}
-
-      </div>
-
-      {reviewModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
-             <h3 className="text-2xl font-black text-primary mb-2">Rate Organizer</h3>
-             <div className="flex justify-center gap-2 mb-6">
-               {[1, 2, 3, 4, 5].map((star) => (<button key={star} onClick={() => setRating(star)} className={`text-4xl ${rating >= star ? 'text-yellow-400' : 'text-slate-200'}`}>★</button>))}
-             </div>
-             <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl h-32 mb-6" />
-             <div className="flex gap-4"><button onClick={() => setReviewModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancel</button><button onClick={submitReview} className="flex-1 py-3 bg-secondary text-white font-bold rounded-xl shadow-lg">Submit Review</button></div>
-          </div>
-        </div>
-      )}
-
-      {showTerms && profile && (<TermsModal userId={profile.id} onClose={() => setShowTerms(false)} onAccept={() => { setProfile({ ...profile, accepted_tos_at: new Date().toISOString() }); setShowTerms(false); setIsCreating(true); }} />)}
-
-      {activeChat && (<ChatWindow conversationId={activeChat.id} currentUserId={profile?.id} otherUserName={activeChat.name} onClose={() => setActiveChat(null)} />)}
-    </div>
-  )
-}
-
-export default function UniversalDashboard() {
-  return (
-    <Suspense fallback={<div className="p-12 text-center text-slate-500">Loading Dashboard...</div>}>
-      <DashboardContent />
-    </Suspense>
-  )
-}
+                              <span className="text-[10px] font-
