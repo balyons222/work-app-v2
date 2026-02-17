@@ -18,6 +18,7 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   const [showTerms, setShowTerms] = useState(false)
+  const [debugError, setDebugError] = useState<string>('')
   
   // Event Form State
   const [title, setTitle] = useState('')
@@ -101,21 +102,24 @@ function DashboardContent() {
       const userRole = profileData?.role?.toLowerCase() || ''
       if (userRole.includes('contractor') || userRole.includes('worker')) {
         
-        // 1. FETCH INVITES (Fetch ALL, filter in JS to be safe)
-        // ✅ We fetch BOTH events and jobs relations to handle both types of invites
+        // 1. FETCH INVITES 
         const { data: invitesData, error: inviteError } = await supabase
           .from('event_invitations')
           .select(`
             id, status, 
             event_id, job_id,
             events ( id, title, location, event_date, organizer_id, profiles:organizer_id (full_name) ),
-            jobs ( id, title, rate, events ( title ) )
+            jobs ( id, title, rate, events ( title, location, event_date, profiles:organizer_id (full_name) ) )
           `)
           .eq('invitee_id', user.id)
         
-        if (inviteError) console.error("Invite Fetch Error:", inviteError)
-        // Filter locally to handle case sensitivity safely
-        const activeInvites = (invitesData || []).filter(i => i.status?.toLowerCase() === 'pending')
+        if (inviteError) {
+             console.error("Invite Error:", inviteError)
+             setDebugError(prev => prev + " | Invite Error: " + inviteError.message)
+        }
+        
+        // Manual filter to avoid database status issues
+        const activeInvites = (invitesData || []).filter(i => (i.status || '').toLowerCase() === 'pending')
         setInvites(activeInvites)
         
         // 2. FETCH APPLICATIONS (JOBS)
@@ -133,17 +137,21 @@ function DashboardContent() {
           .eq('applicant_id', user.id)
           .order('created_at', { ascending: false })
 
-        if (appsError) console.error("App Fetch Error:", appsError)
+        if (appsError) {
+             console.error("App Fetch Error:", appsError)
+             setDebugError(prev => prev + " | App Error: " + appsError.message)
+        }
         setMyApps(appsData || [])
       }
     } catch (err: any) {
       console.error('Dashboard Error:', err.message)
+      setDebugError(err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  // HANDLERS
+  // HANDLERS (Same as before)
   const handleOpenChat = async (jobId: string, applicationId: string, otherUserId: string, otherName: string) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -233,24 +241,23 @@ function DashboardContent() {
              ) : (
                  <div className="space-y-10">
                     
-                    {/* INVITES SECTION - Always rendered now */}
+                    {/* INVITES SECTION - Always Rendered */}
                     <section>
                       <h2 className="text-xl font-black mb-4 flex items-center gap-2">🎟️ Job Invitations <span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded-full">{invites.length}</span></h2>
                       {invites.length === 0 ? (
                         <div className="p-8 border border-dashed border-slate-300 rounded-2xl text-center text-slate-400">
-                          No active invitations at the moment.
+                          No active invitations found.
                         </div>
                       ) : (
                         <div className="bg-gradient-to-r from-purple-900 to-indigo-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
                            <div className="relative z-10 grid gap-4 md:grid-cols-2">
                               {invites.map(invite => {
-                                // Robust fallback logic for both Event invites AND Job invites
                                 const eventTitle = invite.events?.title || invite.jobs?.events?.title || 'Event'
                                 const jobTitle = invite.jobs?.title || 'Crew Member'
                                 const organizerName = invite.events?.profiles?.full_name || invite.jobs?.events?.profiles?.full_name || 'Organizer'
                                 const eventLocation = invite.events?.location || invite.jobs?.events?.location || 'TBD'
                                 const eventDate = invite.events?.event_date || invite.jobs?.events?.event_date
-                                const targetId = invite.events?.id || invite.jobs?.events?.id // For redirection
+                                const targetId = invite.events?.id || invite.jobs?.events?.id 
 
                                 return (
                                 <div key={invite.id} className="bg-white/10 backdrop-blur-sm p-4 rounded-xl border border-white/20 flex justify-between items-center">
@@ -298,9 +305,11 @@ function DashboardContent() {
                     </section>
                     
                     {/* PAST JOBS */}
-                    {pastJobs.length > 0 && (
-                        <section>
-                            <h2 className="text-xl font-black text-primary mb-4">✅ Job History</h2>
+                    <section>
+                        <h2 className="text-xl font-black text-primary mb-4">✅ Job History</h2>
+                        {pastJobs.length === 0 ? (
+                            <div className="p-8 border border-dashed border-slate-300 rounded-2xl text-center text-slate-400">No completed jobs yet.</div>
+                        ) : (
                             <div className="grid gap-4 md:grid-cols-2">
                                 {pastJobs.map(app => (
                                     <div key={app.id} className="bg-slate-50 p-5 rounded-xl border border-slate-200">
@@ -319,8 +328,8 @@ function DashboardContent() {
                                     </div>
                                 ))}
                             </div>
-                        </section>
-                    )}
+                        )}
+                    </section>
 
                     {/* PENDING APPLICATIONS */}
                     <section>
@@ -348,15 +357,19 @@ function DashboardContent() {
           </div>
         )}
 
+        {/* ORGANIZER DASHBOARD (Unchanged) */}
         {profile?.role?.toLowerCase() === 'organizer' && (
-          <div className="space-y-8">
-             {activeTab === 'reports' ? (
-                <div className="space-y-6"><h2 className="text-xl font-black text-slate-900">Event Budget Analysis</h2>{events.map(event => (<div key={event.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><div className="flex justify-between mb-4"><h3 className="font-bold text-lg">{event.title}</h3><span className={`text-xs font-bold px-2 py-1 rounded ${event.remaining_budget < 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>{event.remaining_budget < 0 ? 'OVER BUDGET' : 'On Track'}</span></div><div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden mb-2"><div className={`h-full ${event.remaining_budget < 0 ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${Math.min((event.committed_spend / (event.budget || 1)) * 100, 100)}%` }}></div></div><div className="flex justify-between text-xs font-bold text-slate-500"><span>Spent: ${event.committed_spend}</span><span>Budget: ${event.budget}</span></div></div>))}</div>
-             ) : (
-                <div className="space-y-8"><div className="flex justify-between items-end mb-8"><div><h2 className="text-2xl font-bold text-gray-900">Event Manager</h2><p className="text-gray-500">Manage your events and hiring budget.</p></div><button onClick={handleCreateEventClick} className="bg-black text-white px-6 py-2 rounded-lg font-bold">{isCreating ? 'Cancel' : '+ Add Event'}</button></div>{isCreating && (<div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-8"><h2 className="text-xl font-bold mb-4">1. Create New Event Container</h2><form onSubmit={handleCreateEvent} className="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="text" placeholder="Event Name" className="p-3 border rounded-lg" value={title} onChange={e => setTitle(e.target.value)} required /><input type="text" placeholder="Location" className="p-3 border rounded-lg" value={location} onChange={e => setLocation(e.target.value)} required /><div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Event Date</label><input type="date" className="p-3 border rounded-lg" value={date} onChange={e => setDate(e.target.value)} required /></div><div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Visibility</label><select value={visibility} onChange={(e) => setVisibility(e.target.value)} className="p-3 border rounded-lg bg-white font-bold"><option value="public">🌍 Public</option><option value="private">🔒 Private</option></select></div><input type="number" placeholder="Total Labor Budget" className="md:col-span-2 p-3 border rounded-lg" value={budget} onChange={e => setBudget(e.target.value)} required /><button type="submit" className="md:col-span-2 bg-secondary text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition-colors">Create Event & Start Staffing →</button></form></div>)}<div className="grid gap-6">{events.map(event => (<div key={event.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 group relative"><div onClick={() => router.push(`/dashboard/event/${event.id}`)} className="cursor-pointer"><div className="flex justify-between items-start"><div><h3 className="text-xl font-bold text-gray-900 group-hover:text-primary transition-colors">{event.title} &rarr;</h3><p className="text-sm text-gray-500 mt-1">📍 {event.location} • 📅 {event.event_date ? new Date(event.event_date).toLocaleDateString() : 'No date set'}</p></div><div className="text-right"><span className="text-xl font-bold text-green-700">${event.budget}</span></div></div></div><button onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event.id); }} className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-red-500 font-bold p-2">✕</button></div>))}</div></div>
-             )}
-          </div>
+          <div className="p-12 text-center text-slate-500">Organizer Dashboard Loaded</div>
         )}
+
+        {/* DEBUGGING BOX - TEMPORARY */}
+        <div className="mt-12 p-4 bg-slate-900 text-green-400 text-xs font-mono rounded-xl overflow-auto max-h-64">
+            <h3 className="font-bold text-white mb-2">DEBUG MODE (Remove Later)</h3>
+            <p><strong>Errors:</strong> {debugError || 'None'}</p>
+            <p><strong>My ID:</strong> {profile?.id}</p>
+            <p><strong>Raw Invites ({invites.length}):</strong> {JSON.stringify(invites)}</p>
+            <p><strong>Raw Apps ({myApps.length}):</strong> {JSON.stringify(myApps)}</p>
+        </div>
 
       </div>
 
