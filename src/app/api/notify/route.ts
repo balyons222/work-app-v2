@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
 
-// Initialize Resend with your API Key
+// 1. Initialize Resend
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Initialize Supabase Admin to fetch user emails securely
+// 2. Initialize Supabase Admin (MUST use SERVICE_ROLE_KEY)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -13,26 +13,32 @@ const supabaseAdmin = createClient(
 
 export async function POST(request: Request) {
   try {
-    const { userId, title, message, link, type } = await request.json();
+    const body = await request.json();
+    const { userId, title, message, link } = body;
 
-    // 1. Get the recipient's email securely
+    console.log(`[Notify API] Attempting to notify User ID: ${userId}`);
+
+    // 3. Get the recipient's email securely
     const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
 
     if (userError || !user?.email) {
+      console.error('[Notify API] User Lookup Error:', userError);
       return NextResponse.json({ error: 'User email not found' }, { status: 404 });
     }
 
-    // 2. Send the Email via Resend
+    console.log(`[Notify API] Found email: ${user.email}. Sending via Resend...`);
+
+    // 4. Send the Email via Resend
     const { data, error } = await resend.emails.send({
-      from: 'FxD Staffing <onboarding@resend.dev>', // Use your verified domain later
+      from: 'FxD Staffing <hello@fxdevents.com>', // ✅ UPDATED HERE
       to: [user.email], 
-      subject: `🔔 ${title}`, // E.g. "🔔 You're Hired!"
+      subject: `🔔 ${title}`,
       html: `
         <div style="font-family: sans-serif; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
           <h1 style="color: #333;">${title}</h1>
           <p style="font-size: 16px; color: #555;">${message}</p>
           <br/>
-          <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}${link}" 
+          <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com'}${link}" 
              style="background-color: #000; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
              View Dashboard
           </a>
@@ -44,11 +50,15 @@ export async function POST(request: Request) {
     });
 
     if (error) {
+      console.error('[Notify API] Resend Error:', error);
       return NextResponse.json({ error }, { status: 500 });
     }
 
+    console.log('[Notify API] Success:', data);
     return NextResponse.json(data);
+
   } catch (err: any) {
+    console.error('[Notify API] Server Error:', err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
