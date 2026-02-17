@@ -98,20 +98,17 @@ function DashboardContent() {
       }
 
       // --- CONTRACTOR DATA FETCH ---
-      if (profileData?.role?.toLowerCase() === 'contractor') {
+      const userRole = profileData?.role?.toLowerCase() || ''
+      if (userRole.includes('contractor') || userRole.includes('worker')) {
         
-        // ✅ FETCH INVITES (Through Job Relation) - FIXED QUERY
+        // 1. FETCH INVITES
         const { data: invitesData } = await supabase
           .from('event_invitations')
           .select(`
             id, status, 
             jobs (
-                id,
-                title,
-                events (
-                    id, title, location, event_date, organizer_id,
-                    profiles:organizer_id (full_name)
-                )
+                id, title,
+                events ( id, title, location, event_date, organizer_id, profiles:organizer_id (full_name) )
             )
           `)
           .eq('invitee_id', user.id)
@@ -119,7 +116,9 @@ function DashboardContent() {
         
         setInvites(invitesData || [])
         
-        const { data: appsData } = await supabase
+        // 2. FETCH APPLICATIONS (JOBS)
+        // ✅ Restored 'reviews' fetch so we know if they rated the organizer
+        const { data: appsData, error: appsError } = await supabase
           .from('applications')
           .select(`
             *,
@@ -133,7 +132,12 @@ function DashboardContent() {
           .eq('applicant_id', user.id)
           .order('created_at', { ascending: false })
 
-        setMyApps(appsData || [])
+        if (appsError) {
+            console.error("Error fetching jobs:", appsError)
+        } else {
+            console.log("Found Applications:", appsData)
+            setMyApps(appsData || [])
+        }
       }
     } catch (err: any) {
       console.error('Dashboard Error:', err.message)
@@ -142,111 +146,49 @@ function DashboardContent() {
     }
   }
 
+  // HANDLERS
   const handleOpenChat = async (jobId: string, applicationId: string, otherUserId: string, otherName: string) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-
     const { data: existingChat } = await supabase.from('conversations').select('id').eq('application_id', applicationId).maybeSingle()
-
     if (existingChat) {
-      setActiveChat({ id: existingChat.id, name: otherName });
-      setUnreadCount(0);
+      setActiveChat({ id: existingChat.id, name: otherName }); setUnreadCount(0);
     } else {
-      const { data: newChat, error } = await supabase.from('conversations').insert({
-          job_id: jobId,
-          application_id: applicationId,
-          organizer_id: otherUserId,
-          worker_id: user.id
-        }).select().single()
-
+      const { data: newChat, error } = await supabase.from('conversations').insert({ job_id: jobId, application_id: applicationId, organizer_id: otherUserId, worker_id: user.id }).select().single()
       if (error && error.code === '23505') {
            const { data: retryChat } = await supabase.from('conversations').select('id').eq('application_id', applicationId).single()
            if (retryChat) setActiveChat({ id: retryChat.id, name: otherName })
-      } else if (!error) {
-        setActiveChat({ id: newChat.id, name: otherName })
-        setUnreadCount(0);
-      }
+      } else if (!error) { setActiveChat({ id: newChat.id, name: otherName }); setUnreadCount(0); }
     }
   }
 
-  const handleCreateEventClick = () => {
-    if (!profile?.accepted_tos_at) {
-      setShowTerms(true)
-      return
-    }
-    setIsCreating(!isCreating)
-  }
+  const handleCreateEventClick = () => { if (!profile?.accepted_tos_at) { setShowTerms(true); return; } setIsCreating(!isCreating) }
 
   const handleCreateEvent = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const { error } = await supabase.from('events').insert({
-      title, 
-      location, 
-      event_date: date, 
-      budget: parseFloat(budget),
-      website, 
-      description, 
-      organizer_id: user.id,
-      poc_name: pocName,
-      poc_phone: pocPhone,
-      visibility: visibility 
-    })
-
-    if (error) toast.error('Failed to create event')
-    else {
-      toast.success('Event created!')
-      setIsCreating(false)
-      setTitle(''); setLocation(''); setDate(''); setBudget(''); setWebsite(''); setDescription(''); setPocName(''); setPocPhone(''); setVisibility('public');
-      loadDashboardData()
-    }
+    e.preventDefault(); const { data: { user } } = await supabase.auth.getUser(); if (!user) return
+    const { error } = await supabase.from('events').insert({ title, location, event_date: date, budget: parseFloat(budget), website, description, organizer_id: user.id, poc_name: pocName, poc_phone: pocPhone, visibility })
+    if (error) toast.error('Failed to create event'); else { toast.success('Event created!'); setIsCreating(false); setTitle(''); setLocation(''); setDate(''); setBudget(''); loadDashboardData(); }
   }
 
-  const handleDeleteEvent = async (eventId: string) => {
-    if (!confirm("Are you sure?")) return
-    const { error } = await supabase.from('events').delete().eq('id', eventId)
-    if (!error) {
-      toast.success("Event deleted")
-      loadDashboardData() 
-    }
-  }
+  const handleDeleteEvent = async (eventId: string) => { if (!confirm("Are you sure?")) return; const { error } = await supabase.from('events').delete().eq('id', eventId); if (!error) { toast.success("Event deleted"); loadDashboardData(); } }
 
   const handleInviteResponse = async (inviteId: string, response: 'accepted' | 'declined', eventId: string) => {
     const { error } = await supabase.from('event_invitations').update({ status: response }).eq('id', inviteId)
-    if (!error) {
-      if (response === 'accepted') {
-        toast.success("Invite Accepted!")
-        router.push(`/events/${eventId}`) 
-      } else {
-        toast.success("Invite Declined")
-        setInvites(current => current.filter(i => i.id !== inviteId))
-      }
-    } else {
-        toast.error("Error updating invite")
-    }
+    if (!error) { if (response === 'accepted') { toast.success("Invite Accepted!"); router.push(`/events/${eventId}`) } else { toast.success("Invite Declined"); setInvites(current => current.filter(i => i.id !== inviteId)) } } else { toast.error("Error updating invite") }
   }
 
-  const openReviewModal = (job: any) => {
-    setReviewTarget({ jobId: job.id, organizerId: job.organizer_id, eventName: job.events?.title })
-    setRating(5); setComment(''); setReviewModalOpen(true)
-  }
-
+  const openReviewModal = (job: any) => { setReviewTarget({ jobId: job.id, organizerId: job.organizer_id, eventName: job.events?.title }); setRating(5); setComment(''); setReviewModalOpen(true) }
+  
   const submitReview = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    const { data: { user } } = await supabase.auth.getUser(); if (!user) return
     const { error } = await supabase.from('reviews').insert({ reviewer_id: user.id, reviewee_id: reviewTarget.organizerId, job_id: reviewTarget.jobId, rating, comment })
-    if (!error) {
-      toast.success('Review Submitted!')
-      await sendNotification({ userId: reviewTarget.organizerId, title: "New Review! ⭐", message: `A worker left you a review.`, link: `/dashboard`, type: "success" })
-      setReviewModalOpen(false); loadDashboardData()
-    }
+    if (!error) { toast.success('Review Submitted!'); await sendNotification({ userId: reviewTarget.organizerId, title: "New Review! ⭐", message: `A worker left you a review.`, link: `/dashboard`, type: "success" }); setReviewModalOpen(false); loadDashboardData() }
   }
 
-  const bookedJobs = myApps.filter(a => a.status === 'approved' && a.payment_status !== 'paid')
-  const pendingJobs = myApps.filter(a => a.status === 'pending')
-  const pastJobs = myApps.filter(a => a.payment_status === 'paid')
+  const normalize = (s: string) => s?.toLowerCase().trim() || ''
+  const bookedJobs = myApps.filter(a => normalize(a.status) === 'approved' && normalize(a.payment_status) !== 'paid')
+  const pendingJobs = myApps.filter(a => normalize(a.status) === 'pending')
+  const pastJobs = myApps.filter(a => normalize(a.payment_status) === 'paid')
   const totalEarnings = pastJobs.reduce((sum, app) => sum + (app.jobs?.rate || 0), 0)
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="animate-spin h-8 w-8 border-4 border-secondary border-t-transparent rounded-full"></div></div>
@@ -254,22 +196,13 @@ function DashboardContent() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8 relative">
       <div className="max-w-6xl mx-auto">
-        
-        {/* TABS NAVIGATION */}
         <div className="flex gap-6 border-b border-slate-200 mb-8">
-          <button 
-            onClick={() => { setActiveTab('overview'); setUnreadCount(0); }}
-            className={`pb-4 text-sm font-bold border-b-2 flex items-center gap-2 ${
-              activeTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-slate-400'
-            }`}
-          >
-            Overview
-            {unreadCount > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full animate-bounce">{unreadCount}</span>}
+          <button onClick={() => { setActiveTab('overview'); setUnreadCount(0); }} className={`pb-4 text-sm font-bold border-b-2 flex items-center gap-2 ${activeTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>
+            Overview {unreadCount > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full animate-bounce">{unreadCount}</span>}
           </button>
           <button onClick={() => setActiveTab('reports')} className={`pb-4 text-sm font-bold border-b-2 ${activeTab === 'reports' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>Reports & Analytics</button>
         </div>
 
-        {/* PROFILE HEADER */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
             <div className="h-16 w-16 bg-primary rounded-full overflow-hidden flex items-center justify-center text-white text-2xl font-bold border border-slate-200">
@@ -283,8 +216,7 @@ function DashboardContent() {
           <Link href="/setup-profile" className="w-full md:w-auto text-center px-6 py-2 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-all">Edit Profile</Link>
         </div>
 
-        {/* CONTRACTOR DASHBOARD */}
-        {profile?.role?.toLowerCase() === 'contractor' && (
+        {(profile?.role?.toLowerCase()?.includes('contractor') || profile?.role?.toLowerCase()?.includes('worker')) && (
           <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
              {activeTab === 'reports' ? (
                  <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
@@ -307,7 +239,6 @@ function DashboardContent() {
              ) : (
                  <div className="space-y-10">
                     
-                    {/* ✅ INVITES SECTION (Fully Fixed) */}
                     {invites.length > 0 && (
                       <section>
                         <div className="bg-gradient-to-r from-purple-900 to-indigo-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
@@ -315,14 +246,12 @@ function DashboardContent() {
                             <h2 className="text-xl font-black mb-4 flex items-center gap-2">🎟️ You're Invited! <span className="bg-white/20 text-xs px-2 py-1 rounded-full">{invites.length}</span></h2>
                              <div className="grid gap-4 md:grid-cols-2">
                               {invites.map(invite => {
-                                // Safe data access with fallbacks
                                 const eventTitle = invite.jobs?.events?.title || 'Event'
                                 const jobTitle = invite.jobs?.title || 'Crew Member'
                                 const organizerName = invite.jobs?.events?.profiles?.full_name || 'FXD Organizer'
                                 const eventLocation = invite.jobs?.events?.location || 'TBD'
                                 const eventDate = invite.jobs?.events?.event_date 
                                 const eventId = invite.jobs?.events?.id
-
                                 return (
                                 <div key={invite.id} className="bg-white/10 backdrop-blur-sm p-4 rounded-xl border border-white/20 flex justify-between items-center">
                                   <div>
@@ -372,6 +301,37 @@ function DashboardContent() {
                          </div>
                        )}
                     </section>
+                    
+                    {/* ✅ NEW SECTION: Job History / Rate Organizers */}
+                    {pastJobs.length > 0 && (
+                        <section>
+                            <h2 className="text-xl font-black text-primary mb-4">✅ Completed Jobs & Reviews</h2>
+                            <div className="grid gap-4 md:grid-cols-2">
+                                {pastJobs.map(app => (
+                                    <div key={app.id} className="bg-slate-50 p-5 rounded-xl border border-slate-200 opacity-90 hover:opacity-100 transition-opacity">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <span className="text-[10px] font-bold bg-green-200 text-green-800 px-2 py-1 rounded uppercase">Paid & Complete</span>
+                                            <span className="font-bold text-slate-500">${app.jobs?.rate}</span>
+                                        </div>
+                                        <h4 className="font-bold text-slate-900">{app.jobs?.title}</h4>
+                                        <p className="text-xs text-slate-500 mb-3">{app.jobs?.events?.title}</p>
+                                        
+                                        {/* Check if user already reviewed */}
+                                        {app.jobs?.reviews && app.jobs.reviews.length > 0 ? (
+                                             <div className="text-xs font-bold text-yellow-600">⭐ You rated this organizer</div>
+                                        ) : (
+                                            <button 
+                                                onClick={() => openReviewModal(app.jobs)}
+                                                className="w-full py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100"
+                                            >
+                                                ⭐ Rate Organizer
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
 
                     <section>
                        <h2 className="text-xl font-black text-primary mb-4 flex items-center gap-2">⏳ Pending Applications <span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded-full">{pendingJobs.length}</span></h2>
@@ -395,61 +355,12 @@ function DashboardContent() {
           </div>
         )}
 
-        {/* ORGANIZER DASHBOARD */}
         {profile?.role?.toLowerCase() === 'organizer' && (
           <div className="space-y-8">
              {activeTab === 'reports' ? (
-                <div className="space-y-6">
-                   <h2 className="text-xl font-black text-slate-900">Event Budget Analysis</h2>
-                   {events.map(event => (
-                      <div key={event.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                         <div className="flex justify-between mb-4">
-                           <h3 className="font-bold text-lg">{event.title}</h3>
-                           <span className={`text-xs font-bold px-2 py-1 rounded ${event.remaining_budget < 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>{event.remaining_budget < 0 ? 'OVER BUDGET' : 'On Track'}</span>
-                         </div>
-                         <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden mb-2">
-                           <div className={`h-full ${event.remaining_budget < 0 ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${Math.min((event.committed_spend / (event.budget || 1)) * 100, 100)}%` }}></div>
-                         </div>
-                         <div className="flex justify-between text-xs font-bold text-slate-500"><span>Spent: ${event.committed_spend}</span><span>Budget: ${event.budget}</span></div>
-                      </div>
-                   ))}
-                </div>
+                <div className="space-y-6"><h2 className="text-xl font-black text-slate-900">Event Budget Analysis</h2>{events.map(event => (<div key={event.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><div className="flex justify-between mb-4"><h3 className="font-bold text-lg">{event.title}</h3><span className={`text-xs font-bold px-2 py-1 rounded ${event.remaining_budget < 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>{event.remaining_budget < 0 ? 'OVER BUDGET' : 'On Track'}</span></div><div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden mb-2"><div className={`h-full ${event.remaining_budget < 0 ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${Math.min((event.committed_spend / (event.budget || 1)) * 100, 100)}%` }}></div></div><div className="flex justify-between text-xs font-bold text-slate-500"><span>Spent: ${event.committed_spend}</span><span>Budget: ${event.budget}</span></div></div>))}</div>
              ) : (
-                <div className="space-y-8">
-                   <div className="flex justify-between items-end mb-8">
-                     <div><h2 className="text-2xl font-bold text-gray-900">Event Manager</h2><p className="text-gray-500">Manage your events and hiring budget.</p></div>
-                     <button onClick={handleCreateEventClick} className="bg-black text-white px-6 py-2 rounded-lg font-bold">{isCreating ? 'Cancel' : '+ Add Event'}</button>
-                   </div>
-                   {isCreating && (
-                      <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-8 animate-in fade-in slide-in-from-top-4">
-                        <h2 className="text-xl font-bold mb-4">1. Create New Event Container</h2>
-                        <form onSubmit={handleCreateEvent} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <input type="text" placeholder="Event Name" className="p-3 border rounded-lg" value={title} onChange={e => setTitle(e.target.value)} required />
-                           <input type="text" placeholder="Location" className="p-3 border rounded-lg" value={location} onChange={e => setLocation(e.target.value)} required />
-                           <div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Event Date</label><input type="date" className="p-3 border rounded-lg" value={date} onChange={e => setDate(e.target.value)} required /></div>
-                           <div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Visibility</label><select value={visibility} onChange={(e) => setVisibility(e.target.value)} className="p-3 border rounded-lg bg-white font-bold"><option value="public">🌍 Public</option><option value="private">🔒 Private</option></select></div>
-                           <input type="number" placeholder="Total Labor Budget" className="md:col-span-2 p-3 border rounded-lg" value={budget} onChange={e => setBudget(e.target.value)} required />
-                           <button type="submit" className="md:col-span-2 bg-secondary text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition-colors">Create Event & Start Staffing →</button>
-                        </form>
-                      </div>
-                   )}
-                   <div className="grid gap-6">
-                      {events.map(event => (
-                           <div key={event.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 group relative">
-                              <div onClick={() => router.push(`/dashboard/event/${event.id}`)} className="cursor-pointer">
-                                 <div className="flex justify-between items-start">
-                                    <div>
-                                       <h3 className="text-xl font-bold text-gray-900 group-hover:text-primary transition-colors">{event.title} &rarr;</h3>
-                                       <p className="text-sm text-gray-500 mt-1">📍 {event.location} • 📅 {event.event_date ? new Date(event.event_date).toLocaleDateString() : 'No date set'}</p>
-                                    </div>
-                                    <div className="text-right"><span className="text-xl font-bold text-green-700">${event.budget}</span></div>
-                                 </div>
-                              </div>
-                              <button onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event.id); }} className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-red-500 font-bold p-2">✕</button>
-                           </div>
-                      ))}
-                   </div>
-                </div>
+                <div className="space-y-8"><div className="flex justify-between items-end mb-8"><div><h2 className="text-2xl font-bold text-gray-900">Event Manager</h2><p className="text-gray-500">Manage your events and hiring budget.</p></div><button onClick={handleCreateEventClick} className="bg-black text-white px-6 py-2 rounded-lg font-bold">{isCreating ? 'Cancel' : '+ Add Event'}</button></div>{isCreating && (<div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-8"><h2 className="text-xl font-bold mb-4">1. Create New Event Container</h2><form onSubmit={handleCreateEvent} className="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="text" placeholder="Event Name" className="p-3 border rounded-lg" value={title} onChange={e => setTitle(e.target.value)} required /><input type="text" placeholder="Location" className="p-3 border rounded-lg" value={location} onChange={e => setLocation(e.target.value)} required /><div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Event Date</label><input type="date" className="p-3 border rounded-lg" value={date} onChange={e => setDate(e.target.value)} required /></div><div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Visibility</label><select value={visibility} onChange={(e) => setVisibility(e.target.value)} className="p-3 border rounded-lg bg-white font-bold"><option value="public">🌍 Public</option><option value="private">🔒 Private</option></select></div><input type="number" placeholder="Total Labor Budget" className="md:col-span-2 p-3 border rounded-lg" value={budget} onChange={e => setBudget(e.target.value)} required /><button type="submit" className="md:col-span-2 bg-secondary text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition-colors">Create Event & Start Staffing →</button></form></div>)}<div className="grid gap-6">{events.map(event => (<div key={event.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 group relative"><div onClick={() => router.push(`/dashboard/event/${event.id}`)} className="cursor-pointer"><div className="flex justify-between items-start"><div><h3 className="text-xl font-bold text-gray-900 group-hover:text-primary transition-colors">{event.title} &rarr;</h3><p className="text-sm text-gray-500 mt-1">📍 {event.location} • 📅 {event.event_date ? new Date(event.event_date).toLocaleDateString() : 'No date set'}</p></div><div className="text-right"><span className="text-xl font-bold text-green-700">${event.budget}</span></div></div></div><button onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event.id); }} className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-red-500 font-bold p-2">✕</button></div>))}</div></div>
              )}
           </div>
         )}
@@ -457,20 +368,9 @@ function DashboardContent() {
       </div>
 
       {reviewModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
-             <h3 className="text-2xl font-black text-primary mb-2">Rate Organizer</h3>
-             <div className="flex justify-center gap-2 mb-6">
-               {[1, 2, 3, 4, 5].map((star) => (<button key={star} onClick={() => setRating(star)} className={`text-4xl ${rating >= star ? 'text-yellow-400' : 'text-slate-200'}`}>★</button>))}
-             </div>
-             <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl h-32 mb-6" />
-             <div className="flex gap-4"><button onClick={() => setReviewModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancel</button><button onClick={submitReview} className="flex-1 py-3 bg-secondary text-white font-bold rounded-xl shadow-lg">Submit Review</button></div>
-          </div>
-        </div>
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm"><div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full"><h3 className="text-2xl font-black text-primary mb-2">Rate Organizer</h3><div className="flex justify-center gap-2 mb-6">{[1, 2, 3, 4, 5].map((star) => (<button key={star} onClick={() => setRating(star)} className={`text-4xl ${rating >= star ? 'text-yellow-400' : 'text-slate-200'}`}>★</button>))}</div><textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl h-32 mb-6" /><div className="flex gap-4"><button onClick={() => setReviewModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancel</button><button onClick={submitReview} className="flex-1 py-3 bg-secondary text-white font-bold rounded-xl shadow-lg">Submit Review</button></div></div></div>
       )}
-
       {showTerms && profile && (<TermsModal userId={profile.id} onClose={() => setShowTerms(false)} onAccept={() => { setProfile({ ...profile, accepted_tos_at: new Date().toISOString() }); setShowTerms(false); setIsCreating(true); }} />)}
-
       {activeChat && (<ChatWindow conversationId={activeChat.id} currentUserId={profile?.id} otherUserName={activeChat.name} onClose={() => setActiveChat(null)} />)}
     </div>
   )
