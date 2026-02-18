@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { sendNotification } from '@/src/utils/notifications'
 import TermsModal from '@/src/components/TermsModal'
 import ChatWindow from '@/src/components/ChatWindow'
+import StripeConnectButton from '@/src/components/StripeConnectButton'
 
 function DashboardContent() {
   const [profile, setProfile] = useState<any>(null)
@@ -18,6 +19,7 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   const [showTerms, setShowTerms] = useState(false)
+  const isStripeConnected = !!profile?.stripe_account_id
   
   // Event Form State
   const [title, setTitle] = useState('')
@@ -197,7 +199,15 @@ function DashboardContent() {
           </button>
           <button onClick={() => setActiveTab('reports')} className={`pb-4 text-sm font-bold border-b-2 ${activeTab === 'reports' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>Reports & Analytics</button>
         </div>
-
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8">
+    <div className="flex justify-between items-center">
+        <div>
+            <h3 className="text-lg font-bold">Get Paid</h3>
+            <p className="text-gray-500 text-sm">Connect your bank account to receive payments and tax forms.</p>
+        </div>
+        <StripeConnectButton isConnected={isStripeConnected} />
+    </div>
+</div>
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
             <div className="h-16 w-16 bg-primary rounded-full overflow-hidden flex items-center justify-center text-white text-2xl font-bold border border-slate-200">
