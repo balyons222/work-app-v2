@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 export default function HomePage() {
+export default function HomePage() {
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center bg-[#0B0E2A] text-white overflow-hidden">
       {/* Background Glow Effect */}
@@ -45,6 +46,11 @@ export default function HomePage() {
         </div>
       </div>
 
+      {/* Trust Bar Footer (Optional) */}
+      <div className="absolute bottom-12 w-full text-center">
+        <p className="text-[10px] uppercase tracking-[0.3em] text-slate-500 font-bold">
+          Trusted by staff at major productions
+        </p>
       {/* Trust Bar Footer (Optional) */}
       <div className="absolute bottom-12 w-full text-center">
         <p className="text-[10px] uppercase tracking-[0.3em] text-slate-500 font-bold">
