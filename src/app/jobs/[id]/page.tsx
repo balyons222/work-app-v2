@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -5,18 +6,24 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-// ✅ 1. IMPORT NOTIFICATIONS (PRESERVED)
 import { sendNotification } from '@/src/utils/notifications'
+import TermsModal from '@/src/components/TermsModal'
+import ChatWindow from '@/src/components/ChatWindow' // ✅ NEW IMPORT
 
 export default function JobDetailsPage() {
   const [job, setJob] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [appStatus, setAppStatus] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
-  // ✅ 2. NEW STATE FOR ROLE
   const [userRole, setUserRole] = useState<string | null>(null)
-  // ✅ State for Digital Handshake (PRESERVED)
   const [agreed, setAgreed] = useState(false)
+   
+  // TERMS STATE
+  const [showTerms, setShowTerms] = useState(false)
+  const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false)
+
+  // ✅ CHAT STATE
+  const [activeChat, setActiveChat] = useState<{ id: string, name: string } | null>(null)
 
   const supabase = createClient()
   const params = useParams()
@@ -31,10 +38,10 @@ export default function JobDetailsPage() {
     const { data: { user } } = await supabase.auth.getUser()
     setCurrentUser(user)
 
-    // Fetch Job Data
+    // 1. Fetch Job Data
     const { data: jobData, error } = await supabase
       .from('jobs')
-      .select(`*, events (title, location, event_date, website, description)`)
+      .select(`*, events (title, location, event_date, website, description, organizer_id)`) // ✅ Ensure organizer_id is fetched
       .eq('id', jobId)
       .single()
 
@@ -46,26 +53,65 @@ export default function JobDetailsPage() {
     setJob(jobData)
 
     if (user) {
-      // ✅ 3. FETCH USER ROLE
+      // 2. Fetch Profile
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, accepted_tos_at')
         .eq('id', user.id)
         .single()
-      
-      if (profile) setUserRole(profile.role)
+       
+      if (profile) {
+        setUserRole(profile.role)
+        if (profile.accepted_tos_at) setHasAcceptedTerms(true)
+      }
 
-      // Fetch Application Status
+      // 3. Fetch Application Status
       const { data: appData } = await supabase
         .from('applications')
         .select('status') 
         .eq('job_id', jobId)
         .eq('applicant_id', user.id)
         .single()
-      
+       
       if (appData) setAppStatus(appData.status)
     }
     setLoading(false)
+  }
+
+  // ✅ NEW: Handle Opening Chat
+  const handleContactOrganizer = async () => {
+    if (!currentUser) return router.push('/login')
+    
+    // Check if chat exists
+    const { data: existingChat } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('job_id', jobId)
+        .eq('worker_id', currentUser.id)
+        .eq('organizer_id', job.organizer_id)
+        .maybeSingle()
+
+    if (existingChat) {
+        setActiveChat({ id: existingChat.id, name: 'Organizer' })
+    } else {
+        // Create new chat
+        const { data: newChat, error } = await supabase
+            .from('conversations')
+            .insert({
+                job_id: jobId,
+                worker_id: currentUser.id,
+                organizer_id: job.organizer_id,
+                // We leave application_id null if they haven't applied yet
+            })
+            .select()
+            .single()
+        
+        if (error) {
+            toast.error('Could not start chat')
+        } else {
+            setActiveChat({ id: newChat.id, name: 'Organizer' })
+        }
+    }
   }
 
   const handleApply = async () => {
@@ -75,13 +121,16 @@ export default function JobDetailsPage() {
       return
     }
 
-    // ✅ 4. BLOCK ORGANIZERS
-    if (userRole !== 'contractor') {
-      toast.error('Only Contractors can apply for jobs.')
+    if (!hasAcceptedTerms) {
+      setShowTerms(true)
       return
     }
 
-    // ✅ Enforce Agreement Logic (PRESERVED)
+    if (userRole !== 'contractor' && userRole !== 'worker') {
+      toast.error('Only Contractors/Workers can apply for jobs.')
+      return
+    }
+
     if (!agreed) {
       toast.error('You must agree to the job terms to apply.')
       return
@@ -101,7 +150,6 @@ export default function JobDetailsPage() {
       toast.success('Application Sent!', { id: toastId })
       setAppStatus('pending')
 
-      // ✅ SEND NOTIFICATION (PRESERVED)
       if (job?.organizer_id) {
         await sendNotification({
           userId: job.organizer_id,
@@ -114,7 +162,6 @@ export default function JobDetailsPage() {
     }
   }
 
-  // ✅ 5. UPDATE BUTTON UI FOR ORGANIZERS
   const getButtonUI = () => {
     if (userRole === 'organizer') return { text: 'Organizers Cannot Apply', disabled: true, classes: 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' }
     if (appStatus === 'approved') return { text: '🎉 You are Hired!', disabled: true, classes: 'bg-green-600 text-white cursor-default' }
@@ -129,14 +176,13 @@ export default function JobDetailsPage() {
   if (loading) return <div className="p-20 text-center">Loading Details...</div>
   if (!job) return <div className="p-20 text-center">Job not found.</div>
 
-  // ✅ VISUALS START HERE
   return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4">
+    <div className="min-h-screen bg-slate-50 py-12 px-4 relative">
       <div className="max-w-3xl mx-auto">
         <Link href="/jobs" className="inline-flex items-center text-sm font-bold text-slate-400 hover:text-primary mb-8 transition-colors">← Back to Job Board</Link>
 
         <div className={`bg-white rounded-3xl shadow-sm border ${appStatus === 'approved' ? 'border-green-500 ring-2 ring-green-500' : 'border-slate-200'} overflow-hidden`}>
-          
+           
           <div className="p-8 md:p-12 border-b border-slate-100 relative">
              {appStatus === 'approved' && (
                <div className="absolute top-0 left-0 w-full bg-green-600 text-white text-center text-xs font-bold uppercase py-1 tracking-widest">
@@ -147,7 +193,17 @@ export default function JobDetailsPage() {
               <div>
                 <span className="inline-block px-3 py-1 bg-teal-50 text-secondary text-xs font-bold uppercase tracking-widest rounded-md mb-3">{job.title}</span>
                 <h1 className="text-3xl font-black text-primary mb-2">{job.events?.title}</h1>
-                <p className="text-lg text-slate-500 font-medium">📍 {job.events?.location}</p>
+                <p className="text-lg text-slate-500 font-medium mb-4">📍 {job.events?.location}</p>
+
+                {/* ✅ NEW: Message Organizer Button */}
+                {userRole !== 'organizer' && (
+                    <button 
+                        onClick={handleContactOrganizer}
+                        className="text-sm font-bold text-blue-600 bg-blue-50 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-2"
+                    >
+                        💬 Message Organizer
+                    </button>
+                )}
               </div>
               <div className="text-right bg-slate-50 p-4 rounded-xl border border-slate-100">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Rate</p>
@@ -179,8 +235,8 @@ export default function JobDetailsPage() {
 
               <div className="pt-8 border-t border-slate-200 mt-8">
                 
-                {/* ✅ CHECKBOX: Only show if user is CONTRACTOR */}
-                {!appStatus && userRole === 'contractor' && (
+                {/* Checkbox Logic: Show for Contractor OR Worker */}
+                {!appStatus && (userRole === 'contractor' || userRole === 'worker') && (
                   <div className="mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                     <label className="flex items-start gap-3 cursor-pointer select-none">
                       <input 
@@ -208,9 +264,31 @@ export default function JobDetailsPage() {
               </div>
             </div>
           </div>
-
         </div>
       </div>
+
+      {/* TERMS MODAL */}
+      {showTerms && currentUser && (
+        <TermsModal 
+          userId={currentUser.id} 
+          onClose={() => setShowTerms(false)}
+          onAccept={() => {
+            setHasAcceptedTerms(true)
+            setShowTerms(false)
+            toast.success("Terms accepted! You can now apply.")
+          }}
+        />
+      )}
+
+      {/* ✅ CHAT WINDOW */}
+      {activeChat && currentUser && (
+        <ChatWindow 
+          conversationId={activeChat.id}
+          currentUserId={currentUser.id}
+          otherUserName={activeChat.name}
+          onClose={() => setActiveChat(null)}
+        />
+      )}
     </div>
   )
 }

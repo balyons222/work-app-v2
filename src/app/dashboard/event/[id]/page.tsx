@@ -6,6 +6,8 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { sendNotification } from '@/src/utils/notifications'
+import InviteTalentModal from '@/src/components/InviteTalentModal' 
+import ChatWindow from '@/src/components/ChatWindow' 
 
 // 🛠️ SHARED ROLES
 const ROLE_CATEGORIES = {
@@ -18,25 +20,36 @@ export default function EventManagerPage() {
   const [event, setEvent] = useState<any>(null)
   const [jobs, setJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  
-  // ✅ FORM STATE
+   
+  // EVENT DETAILS STATE
+  const [isEditingEvent, setIsEditingEvent] = useState(false)
+  const [eventFormData, setEventFormData] = useState({
+    title: '', location: '', event_date: '', budget: '', 
+    description: '', website: '', poc_name: '', poc_phone: '', visibility: 'public'
+  })
+   
+  // MODAL STATES
+  const [inviteModalData, setInviteModalData] = useState<{ open: boolean, jobId?: string, jobTitle?: string }>({ open: false })
   const [showJobForm, setShowJobForm] = useState(false)
   const [editingJobId, setEditingJobId] = useState<string | null>(null)
 
+  // JOB FORM STATE
   const [selectedRole, setSelectedRole] = useState('')
   const [rate, setRate] = useState('')
   const [rateType, setRateType] = useState('flat')
   const [estimatedHours, setEstimatedHours] = useState('') 
-
   const [jobDescription, setJobDescription] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
 
-  // ✅ REVIEW STATE
+  // REVIEW STATE
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
   const [reviewTarget, setReviewTarget] = useState<any>(null) 
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState('')
+
+  // ✅ CHAT STATE
+  const [activeChat, setActiveChat] = useState<{ id: string, name: string } | null>(null)
 
   const supabase = createClient()
   const params = useParams()
@@ -60,8 +73,19 @@ export default function EventManagerPage() {
       return
     }
     setEvent(eventData)
+    
+    setEventFormData({
+      title: eventData.title || '',
+      location: eventData.location || '',
+      event_date: eventData.event_date || '',
+      budget: eventData.budget || '',
+      description: eventData.description || '',
+      website: eventData.website || '',
+      poc_name: eventData.poc_name || '',
+      poc_phone: eventData.poc_phone || '',
+      visibility: eventData.visibility || 'public'
+    })
 
-    // ✅ UPDATED QUERY: Fetch 'reviews' so we can check if they exist
     const { data: jobsData } = await supabase
       .from('jobs')
       .select(`
@@ -79,39 +103,98 @@ export default function EventManagerPage() {
     setLoading(false)
   }
 
-  // ✅ PREPARE FORM FOR EDITING
+  // ✅ CHAT HANDLER
+const handleOpenChat = async (jobId: string, applicationId: string, workerId: string, workerName: string) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { data: existingChat } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('application_id', applicationId) // ✅ Match by unique Application ID
+      .maybeSingle()
+
+    if (existingChat) {
+      setActiveChat({ id: existingChat.id, name: workerName })
+    } else {
+      const { data: newChat, error } = await supabase
+        .from('conversations')
+        .insert({
+          job_id: jobId,
+          application_id: applicationId,
+          organizer_id: user.id,
+          worker_id: workerId
+        })
+        .select()
+        .single()
+
+      if (error) {
+         if (error.code === '23505') { // Handle unique constraint error
+           const { data: retryChat } = await supabase.from('conversations').select('id').eq('application_id', applicationId).single()
+           if (retryChat) setActiveChat({ id: retryChat.id, name: workerName })
+         } else {
+           toast.error('Failed to start chat')
+         }
+      } else {
+        setActiveChat({ id: newChat.id, name: workerName })
+      }
+    }
+  }
+  // --- EVENT EDITING ---
+  const handleEventChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    setEventFormData({ ...eventFormData, [e.target.name]: e.target.value })
+  }
+
+  const handleUpdateEvent = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const { error } = await supabase
+      .from('events')
+      .update({
+        title: eventFormData.title,
+        location: eventFormData.location,
+        event_date: eventFormData.event_date,
+        budget: parseFloat(eventFormData.budget),
+        description: eventFormData.description,
+        website: eventFormData.website,
+        poc_name: eventFormData.poc_name,
+        poc_phone: eventFormData.poc_phone,
+        visibility: eventFormData.visibility
+      })
+      .eq('id', eventId)
+
+    if (error) {
+      toast.error("Failed to update event")
+    } else {
+      toast.success("Event updated!")
+      setIsEditingEvent(false)
+      loadEventData()
+    }
+  }
+
+  // --- JOB MANAGEMENT ---
   const handleEditClick = (job: any) => {
     setEditingJobId(job.id)
     setSelectedRole(job.title)
     setRate(job.rate.toString())
     setJobDescription(job.description || '')
-    setStartDate(job.start_date)
-    setEndDate(job.end_date)
+    setStartDate(job.start_date || '')
+    setEndDate(job.end_date || '')
     setRateType(job.rate_type || 'flat')
     setEstimatedHours(job.estimated_hours ? job.estimated_hours.toString() : '')
-
     setShowJobForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const resetForm = () => {
-    setEditingJobId(null)
-    setSelectedRole('')
-    setRate('')
-    setJobDescription('')
-    setStartDate('')
-    setEndDate('')
-    setRateType('flat')
-    setEstimatedHours('')
+    setEditingJobId(null); setSelectedRole(''); setRate(''); setJobDescription('');
+    setStartDate(''); setEndDate(''); setRateType('flat'); setEstimatedHours('');
     setShowJobForm(false)
   }
 
   const handleSaveJob = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedRole) return toast.error('Please select a role')
-
     const { data: { user } } = await supabase.auth.getUser()
-    
     const jobData = {
       event_id: eventId,
       organizer_id: user?.id,
@@ -124,9 +207,7 @@ export default function EventManagerPage() {
       rate_type: rateType,
       estimated_hours: rateType === 'hourly' ? parseFloat(estimatedHours) : 0
     }
-
     let error;
-
     if (editingJobId) {
       const { error: updateError } = await supabase.from('jobs').update(jobData).eq('id', editingJobId)
       error = updateError
@@ -134,10 +215,8 @@ export default function EventManagerPage() {
       const { error: insertError } = await supabase.from('jobs').insert(jobData)
       error = insertError
     }
-
-    if (error) {
-      toast.error(error.message)
-    } else {
+    if (error) toast.error(error.message)
+    else {
       toast.success(editingJobId ? 'Job Updated!' : 'Job Added!')
       resetForm()
       loadEventData() 
@@ -146,20 +225,12 @@ export default function EventManagerPage() {
 
   const handleAppStatus = async (appId: string, newStatus: string) => {
     const { error } = await supabase.from('applications').update({ status: newStatus }).eq('id', appId)
-    
     if (!error) {
       toast.success(`Applicant ${newStatus}`)
-      
       if (newStatus === 'approved') {
-        const { data: rawData } = await supabase
-          .from('applications')
-          .select('applicant_id, jobs(title, events(title))')
-          .eq('id', appId)
-          .single()
-
-        const appData = rawData as any
-
-        if (appData) {
+        const { data: rawData } = await supabase.from('applications').select('applicant_id, jobs(title, events(title))').eq('id', appId).single()
+        if (rawData) {
+          const appData = rawData as any
           await sendNotification({
             userId: appData.applicant_id,
             title: "You're Hired! 🎉",
@@ -170,338 +241,291 @@ export default function EventManagerPage() {
         }
       }
       loadEventData() 
-    } else {
-      toast.error('Update failed')
-    }
+    } else toast.error('Update failed')
   }
 
   const handleMarkPaid = async (appId: string) => {
     const method = prompt('How did you pay them? (e.g. Venmo, Check #123, Cash)')
     if (!method) return
     const { error } = await supabase.from('applications').update({ payment_status: 'paid', payment_method: method }).eq('id', appId)
-    if (!error) {
-      toast.success('Marked as Paid')
-      loadEventData()
-    }
+    if (!error) { toast.success('Marked as Paid'); loadEventData(); }
   }
 
   const handleDeleteJob = async (jobId: string) => {
-    if (!confirm('Are you sure? This will delete the job and all applications.')) return
+    if (!confirm('Are you sure?')) return
     const { error } = await supabase.from('jobs').delete().eq('id', jobId)
-    if (!error) {
-      toast.success('Job removed')
-      loadEventData()
-    }
+    if (!error) { toast.success('Job removed'); loadEventData(); }
   }
 
-  // ✅ REVIEW LOGIC HANDLERS
+  // --- REVIEWS ---
   const openReviewModal = (app: any, job: any) => {
-    setReviewTarget({
-      appId: app.id,
-      userId: app.applicant_id,
-      name: app.profiles?.full_name,
-      jobId: job.id
-    })
-    setRating(5)
-    setComment('')
-    setReviewModalOpen(true)
+    setReviewTarget({ appId: app.id, userId: app.applicant_id, name: app.profiles?.full_name, jobId: job.id })
+    setRating(5); setComment(''); setReviewModalOpen(true)
   }
 
   const submitReview = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-
-    const { error } = await supabase.from('reviews').insert({
-      reviewer_id: user.id,
-      reviewee_id: reviewTarget.userId,
-      job_id: reviewTarget.jobId,
-      rating: rating,
-      comment: comment
-    })
-
-    if (error) {
-      toast.error(error.message)
-    } else {
+    const { error } = await supabase.from('reviews').insert({ reviewer_id: user.id, reviewee_id: reviewTarget.userId, job_id: reviewTarget.jobId, rating, comment })
+    if (error) toast.error(error.message)
+    else {
       toast.success('Review Submitted!')
-      
-      await sendNotification({
-        userId: reviewTarget.userId,
-        title: "New Review! ⭐",
-        message: `You received a ${rating}-star review from your last event. Check your profile!`,
-        link: `/profile/${reviewTarget.userId}`,
-        type: "success"
-      })
-
-      setReviewModalOpen(false)
-      loadEventData()
+      await sendNotification({ userId: reviewTarget.userId, title: "New Review! ⭐", message: `New review received!`, link: `/profile/${reviewTarget.userId}`, type: "success" })
+      setReviewModalOpen(false); loadEventData()
     }
   }
 
   if (loading) return <div className="p-20 text-center">Loading Event...</div>
 
-  // SMART BUDGET CALCULATION
   const totalBudget = event?.budget || 0
-  const allocatedBudget = jobs.reduce((sum, job) => {
-    const jobCost = job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate
-    return sum + (jobCost || 0)
-  }, 0)
-  
+  const allocatedBudget = jobs.reduce((sum, job) => sum + (job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate), 0)
   const remainingBudget = totalBudget - allocatedBudget
-  const percentUsed = Math.min((allocatedBudget / totalBudget) * 100, 100)
+  const percentUsed = Math.min((allocatedBudget / (totalBudget || 1)) * 100, 100)
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4">
       <div className="max-w-6xl mx-auto">
-        
         <Link href="/dashboard" className="inline-flex items-center text-sm font-bold text-slate-400 hover:text-primary mb-8 transition-colors">
           ← Back to Dashboard
         </Link>
 
-        {/* 1. EVENT SUMMARY */}
+        {/* EVENT SUMMARY */}
         <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm mb-8">
-          <div className="flex flex-col md:flex-row justify-between gap-8">
-            <div className="flex-1">
-              <span className="inline-block px-3 py-1 bg-teal-50 text-secondary text-xs font-bold uppercase tracking-widest rounded-full mb-3">Event Container</span>
-              <h1 className="text-4xl font-black text-primary mb-2">{event.title}</h1>
-              <p className="text-lg text-slate-600 mb-4">{event.description}</p>
-              <div className="flex flex-wrap gap-6 text-sm font-bold text-slate-500">
-                <span>📍 {event.location}</span>
-                <span>📅 {new Date(event.event_date).toLocaleDateString()}</span>
-              </div>
-            </div>
-
-            <div className="w-full md:w-80 bg-slate-50 p-6 rounded-2xl border border-slate-200">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Labor Budget</p>
-              <p className="text-3xl font-black text-slate-900 mb-4">${totalBudget.toLocaleString()}</p>
-              <div className="space-y-3">
-                <div className="flex justify-between text-xs font-bold text-slate-500"><span>Allocated (Est.)</span><span>${allocatedBudget.toLocaleString()}</span></div>
-                <div className="h-3 w-full bg-white rounded-full overflow-hidden border border-slate-200">
-                  <div className={`h-full transition-all duration-500 ${remainingBudget < 0 ? 'bg-red-500' : 'bg-secondary'}`} style={{ width: `${percentUsed}%` }} />
+          {!isEditingEvent ? (
+            <div className="flex flex-col md:flex-row justify-between gap-8">
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="inline-block px-3 py-1 bg-teal-50 text-secondary text-xs font-bold uppercase tracking-widest rounded-full">Event Container</span>
+                  <button onClick={() => setIsEditingEvent(true)} className="text-slate-400 hover:text-primary text-xs font-bold uppercase tracking-wider flex items-center gap-1">✎ Edit Details</button>
                 </div>
-                <div className={`flex justify-between text-xs font-bold ${remainingBudget < 0 ? 'text-red-600' : 'text-green-600'}`}><span>Remaining</span><span>${remainingBudget.toLocaleString()}</span></div>
+                <h1 className="text-4xl font-black text-primary mb-2">{event.title}</h1>
+                <p className="text-lg text-slate-600 mb-4">{event.description}</p>
+                <div className="flex flex-wrap gap-4 text-sm font-bold text-slate-500 items-center">
+                  <span>📍 {event.location}</span>
+                  <span>📅 {new Date(event.event_date).toLocaleDateString()}</span>
+                  {event.visibility === 'private' && <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-lg text-xs uppercase tracking-wider">🔒 Private Event</span>}
+                </div>
+              </div>
+              <div className="w-full md:w-80 bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Labor Budget</p>
+                      <p className="text-3xl font-black text-slate-900">${totalBudget.toLocaleString()}</p>
+                    </div>
+                    <button onClick={() => setInviteModalData({ open: true })} className="bg-black text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-800 flex items-center gap-2 shadow-md">✉️ Invite</button>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between text-xs font-bold text-slate-500"><span>Allocated</span><span>${allocatedBudget.toLocaleString()}</span></div>
+                  <div className="h-3 w-full bg-white rounded-full overflow-hidden border border-slate-200">
+                    <div className={`h-full transition-all duration-500 ${remainingBudget < 0 ? 'bg-red-500' : 'bg-secondary'}`} style={{ width: `${percentUsed}%` }} />
+                  </div>
+                  <div className={`flex justify-between text-xs font-bold ${remainingBudget < 0 ? 'text-red-600' : 'text-green-600'}`}><span>Remaining</span><span>${remainingBudget.toLocaleString()}</span></div>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <form onSubmit={handleUpdateEvent} className="space-y-6 animate-in fade-in">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-4">
+                <h2 className="text-xl font-black text-slate-900">Edit Event</h2>
+                <button type="button" onClick={() => setIsEditingEvent(false)} className="text-sm font-bold text-slate-400">Cancel</button>
+              </div>
+              <div className="grid md:grid-cols-2 gap-6">
+                <input name="title" value={eventFormData.title} onChange={handleEventChange} placeholder="Title" className="p-2 border rounded-lg font-bold" />
+                <input name="location" value={eventFormData.location} onChange={handleEventChange} placeholder="Location" className="p-2 border rounded-lg" />
+                <input type="date" name="event_date" value={eventFormData.event_date} onChange={handleEventChange} className="p-2 border rounded-lg" />
+                <input type="number" name="budget" value={eventFormData.budget} onChange={handleEventChange} placeholder="Budget" className="p-2 border rounded-lg" />
+              </div>
+              <button type="submit" className="w-full bg-black text-white font-bold py-3 rounded-xl">Save Changes</button>
+            </form>
+          )}
         </div>
 
-        {/* 2. JOB MANAGER HEADER */}
+        {/* STAFFING SECTION */}
         <div className="flex justify-between items-end mb-6">
           <h2 className="text-2xl font-black text-primary">Staffing & Applicants</h2>
-          <button 
-            onClick={() => showJobForm ? resetForm() : setShowJobForm(true)} 
-            className="bg-black text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg"
-          >
+          <button onClick={() => showJobForm ? resetForm() : setShowJobForm(true)} className="bg-black text-white px-6 py-3 rounded-xl font-bold shadow-lg">
             {showJobForm ? 'Cancel' : '+ Add Role'}
           </button>
         </div>
 
-        {/* ADD/EDIT JOB FORM */}
         {showJobForm && (
-          <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-200 mb-8 animate-in fade-in slide-in-from-top-4">
-            <h3 className="text-lg font-bold mb-6">
-              {editingJobId ? 'Edit Job Role' : 'Create Job Role'}
-            </h3>
+          <div className="bg-white p-8 rounded-2xl border mb-8 shadow-lg animate-in fade-in slide-in-from-top-4">
+            <h3 className="text-lg font-bold mb-4">{editingJobId ? 'Edit Role' : 'Create New Role'}</h3>
             <form onSubmit={handleSaveJob} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Role Needed</label>
-                  <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold text-primary" required>
-                    <option value="">Select a Role...</option>
-                    {Object.entries(ROLE_CATEGORIES).map(([category, roles]) => (
-                      <optgroup key={category} label={category}>{roles.map(role => <option key={role} value={role}>{role}</option>)}</optgroup>
-                    ))}
-                  </select>
-                </div>
-                
-                <div className="flex gap-4">
-                   <div className="w-1/2">
-                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Pay Type</label>
-                      <select 
-                        value={rateType} 
-                        onChange={(e) => setRateType(e.target.value)}
-                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold"
-                      >
-                        <option value="flat">Flat Rate ($)</option>
-                        <option value="hourly">Hourly ($/hr)</option>
-                      </select>
-                   </div>
-                   <div className="w-1/2">
-                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Rate</label>
-                      <input type="number" placeholder={rateType === 'hourly' ? "25" : "500"} value={rate} onChange={(e) => setRate(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold text-primary" required />
-                   </div>
-                </div>
+              {/* Role Selector */}
+              <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl" required>
+                <option value="">Select a Role...</option>
+                {Object.entries(ROLE_CATEGORIES).map(([cat, roles]) => (
+                  <optgroup key={cat} label={cat}>{roles.map(r => <option key={r} value={r}>{r}</option>)}</optgroup>
+                ))}
+              </select>
+              
+              {/* ✅ ADDED: Description Field */}
+              <textarea 
+                value={jobDescription} 
+                onChange={(e) => setJobDescription(e.target.value)} 
+                placeholder="Job Description & Requirements (e.g. 'Must be able to lift 50lbs', 'Wear all black')" 
+                className="w-full p-3 bg-slate-50 border rounded-xl h-24" 
+              />
 
-                {rateType === 'hourly' && (
-                  <div className="md:col-span-2 bg-yellow-50 p-4 rounded-xl border border-yellow-100 flex items-center gap-4">
-                    <div className="flex-1">
-                       <label className="block text-xs font-bold text-yellow-600 uppercase tracking-widest mb-1">Estimated Hours</label>
-                       <p className="text-xs text-yellow-600/80">Used for budget calculation only.</p>
-                    </div>
-                    <input 
-                      type="number" 
-                      placeholder="e.g. 10" 
-                      value={estimatedHours} 
-                      onChange={(e) => setEstimatedHours(e.target.value)} 
-                      className="w-32 p-3 bg-white border border-yellow-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary font-bold" 
-                      required 
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Start Date</label>
-                  <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" required />
+              {/* ✅ ADDED: Date Pickers */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col">
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1">Start Date</label>
+                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="p-3 bg-slate-50 border rounded-xl" required />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">End Date</label>
-                  <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" required />
+                <div className="flex flex-col">
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1">End Date</label>
+                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="p-3 bg-slate-50 border rounded-xl" required />
                 </div>
               </div>
-              <textarea placeholder="Specific requirements..." value={jobDescription} onChange={(e) => setJobDescription(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl h-24 outline-none focus:ring-2 focus:ring-secondary" />
-              
-              <button type="submit" className="w-full bg-secondary text-white font-bold py-4 rounded-xl hover:bg-teal-600 transition-colors shadow-lg">
-                {editingJobId ? 'Save Changes' : 'Add Role to Budget'}
-              </button>
+
+              {/* Rate & Hours */}
+              <div className="flex gap-4 items-end">
+                <div className="w-1/3">
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1">Pay Type</label>
+                    <select value={rateType} onChange={(e) => setRateType(e.target.value)} className="w-full p-3 border rounded-xl">
+                      <option value="flat">Flat Rate</option>
+                      <option value="hourly">Hourly</option>
+                    </select>
+                </div>
+                <div className="w-1/3">
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1">Rate ($)</label>
+                    <input type="number" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="0.00" className="w-full p-3 border rounded-xl" required />
+                </div>
+                {/* ✅ ADDED: Estimated Hours Input (Conditional) */}
+                {rateType === 'hourly' && (
+                    <div className="w-1/3 animate-in fade-in">
+                        <label className="text-xs font-bold text-slate-400 uppercase mb-1">Est. Hours</label>
+                        <input type="number" value={estimatedHours} onChange={(e) => setEstimatedHours(e.target.value)} placeholder="8" className="w-full p-3 border rounded-xl" required />
+                    </div>
+                )}
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 flex justify-end gap-3">
+                  <button type="button" onClick={resetForm} className="px-6 py-3 font-bold text-slate-400 hover:text-slate-600">Cancel</button>
+                  <button type="submit" className="bg-secondary text-white font-bold px-8 py-3 rounded-xl hover:bg-teal-600 transition-colors shadow-md">
+                      {editingJobId ? 'Update Role' : 'Save Role'}
+                  </button>
+              </div>
             </form>
           </div>
         )}
 
-        {/* 3. LIST OF JOBS + APPLICANTS */}
+        {/* APPLICANT CARDS */}
         <div className="space-y-6">
-          {jobs.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">No roles added yet.</div>
-          ) : (
-            jobs.map(job => (
-              <div key={job.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                
-                <div className="p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-50/50 border-b border-slate-100">
-                  <div>
-                    <h3 className="text-xl font-black text-primary">{job.title}</h3>
-                    <div className="flex gap-4 text-sm text-slate-500 font-bold mt-1 items-center">
-                      <span className="text-green-600 bg-green-50 px-2 py-1 rounded">
-                        ${job.rate} {job.rate_type === 'hourly' ? '/ hr' : 'flat'}
-                      </span>
-                      {job.rate_type === 'hourly' && (
-                        <span className="text-xs text-slate-400">
-                          (Est. {job.estimated_hours} hrs)
-                        </span>
-                      )}
-                      <span>{job.start_date} → {job.end_date}</span>
+          {jobs.map(job => {
+            // ✅ ADDED: Total Pay Calculation
+            const estimatedTotal = job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate;
+
+            return (
+                <div key={job.id} className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+                  <div className="p-6 bg-slate-50/50 border-b flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                      <h3 className="text-xl font-black text-primary">{job.title}</h3>
+                      <div className="flex items-center gap-4 mt-1 text-sm text-slate-600">
+                          {/* ✅ ADDED: Display Dates & Description */}
+                          <span className="font-bold bg-white border px-2 py-0.5 rounded">
+                            {job.start_date ? new Date(job.start_date).toLocaleDateString() : 'TBD'} 
+                            {job.end_date && job.end_date !== job.start_date ? ` - ${new Date(job.end_date).toLocaleDateString()}` : ''}
+                          </span>
+                          <span className="text-slate-400">|</span>
+                          <span className="font-bold text-green-600">
+                            ${job.rate}/{job.rate_type === 'hourly' ? 'hr' : 'flat'}
+                            {job.rate_type === 'hourly' && <span className="text-slate-400 font-normal text-xs ml-1">(Est. Total: ${estimatedTotal})</span>}
+                          </span>
+                      </div>
+                      {job.description && <p className="text-xs text-slate-500 mt-2 max-w-xl">{job.description}</p>}
+                    </div>
+                    <div className="flex gap-3">
+                      <button onClick={() => handleEditClick(job)} className="text-xs font-bold uppercase text-slate-400 hover:text-primary">✎ Edit</button>
+                      <button onClick={() => setInviteModalData({ open: true, jobId: job.id, jobTitle: job.title })} className="text-xs font-bold uppercase text-slate-400 hover:text-secondary">✉️ Invite</button>
+                      <button onClick={() => handleDeleteJob(job.id)} className="text-xs font-bold uppercase text-slate-400 hover:text-red-600">Delete</button>
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => handleEditClick(job)} className="text-slate-400 hover:text-secondary font-bold text-xs uppercase tracking-wider flex items-center gap-1">✏️ Edit</button>
-                    <div className="h-4 w-px bg-slate-300"></div>
-                    <button onClick={() => handleDeleteJob(job.id)} className="text-slate-400 hover:text-red-600 font-bold text-xs uppercase tracking-wider">Delete</button>
-                  </div>
-                </div>
-
-                <div className="p-6">
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
-                    Applicants ({job.applications?.length || 0})
-                  </h4>
-                  
-                  {(!job.applications || job.applications.length === 0) ? (
-                    <p className="text-slate-400 text-sm italic">Waiting for applicants...</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {job.applications.map((app: any) => {
-                        // ✅ CHECK IF THIS USER HAS A REVIEW
-                        const hasReview = job.reviews?.some((r: any) => r.reviewee_id === app.applicant_id)
-
-                        return (
-                          <div key={app.id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-secondary transition-colors">
+                  {/* Applications List */}
+                  <div className="p-6 space-y-3 bg-white">
+                    {job.applications?.length === 0 ? (
+                        <p className="text-center text-sm text-slate-300 italic py-2">No applicants yet.</p>
+                    ) : (
+                        job.applications?.map((app: any) => (
+                          <div key={app.id} className="flex items-center justify-between p-4 bg-white border rounded-xl shadow-sm hover:shadow-md transition-shadow">
                             <div className="flex items-center gap-3">
-                              <Link href={`/profile/${app.applicant_id}`} className="h-10 w-10 bg-slate-200 rounded-full overflow-hidden block">
-                                {app.profiles?.avatar_url ? (
-                                  <img src={app.profiles.avatar_url} className="h-full w-full object-cover" />
-                                ) : (
-                                  <div className="h-full w-full flex items-center justify-center font-bold text-slate-400">
-                                    {app.profiles?.full_name?.charAt(0)}
-                                  </div>
-                                )}
-                              </Link>
+                              <div className="h-10 w-10 bg-slate-200 rounded-full overflow-hidden">
+                                {app.profiles?.avatar_url && <img src={app.profiles.avatar_url} className="object-cover h-full w-full" />}
+                              </div>
                               <div>
-                                <Link href={`/profile/${app.applicant_id}`} className="font-bold text-primary hover:underline">
-                                  {app.profiles?.full_name || 'Unknown User'}
-                                </Link>
-                                <p className="text-xs text-slate-400 uppercase font-bold">{app.status}</p>
+                                <Link href={`/profile/${app.applicant_id}`} className="font-bold hover:underline text-primary">{app.profiles?.full_name}</Link>
+                                <p className={`text-xs uppercase font-bold ${
+                                    app.status === 'approved' ? 'text-green-600' : 
+                                    app.status === 'rejected' ? 'text-red-400' : 'text-slate-400'
+                                }`}>{app.status}</p>
                               </div>
                             </div>
-                            <div className="text-right">
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => handleOpenChat(job.id, app.id, app.applicant_id, app.profiles?.full_name)} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">💬 Chat</button>
+                              
                               {app.status === 'pending' && (
-                                <div className="flex gap-2">
-                                  <button onClick={() => handleAppStatus(app.id, 'rejected')} className="px-3 py-1 text-xs font-bold text-red-500 bg-red-50 rounded-lg hover:bg-red-100">Decline</button>
-                                  <button onClick={() => handleAppStatus(app.id, 'approved')} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded-lg hover:bg-green-600 shadow-sm">Hire</button>
-                                </div>
+                                <>
+                                  <button onClick={() => handleAppStatus(app.id, 'rejected')} className="px-3 py-1.5 text-xs font-bold text-red-500 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">Decline</button>
+                                  <button onClick={() => handleAppStatus(app.id, 'approved')} className="px-3 py-1.5 text-xs font-bold text-white bg-green-500 rounded-lg hover:bg-green-600 transition-colors shadow-sm">Hire</button>
+                                </>
                               )}
-                              {app.status === 'approved' && (
-                                app.payment_status === 'paid' ? (
-                                  <div className="flex items-center gap-4">
-                                    <div><span className="text-green-600 font-bold text-sm block">✓ Paid</span><span className="text-xs text-slate-400 font-medium">{app.payment_method}</span></div>
-                                    
-                                    {/* ✅ REVIEW BUTTON / BADGE */}
-                                    {hasReview ? (
-                                      <span className="text-xs font-bold text-yellow-500 bg-yellow-50 px-2 py-1 rounded">⭐ Reviewed</span>
-                                    ) : (
-                                      <button onClick={() => openReviewModal(app, job)} className="px-3 py-1 text-xs font-bold text-secondary bg-teal-50 border border-teal-100 rounded-lg hover:bg-teal-100">Leave Review</button>
-                                    )}
+                              
+                              {app.status === 'approved' && app.payment_status !== 'paid' && (
+                                  <button onClick={() => handleMarkPaid(app.id)} className="px-3 py-1.5 text-xs font-bold text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors">Mark Paid</button>
+                              )}
+                              
+                              {app.payment_status === 'paid' && (
+                                  <div className="flex gap-2">
+                                      <span className="px-3 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 rounded-lg border border-slate-200">Paid</span>
+                                      <button onClick={() => openReviewModal(app, job)} className="px-3 py-1.5 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100">Rate</button>
                                   </div>
-                                ) : (
-                                  <button onClick={() => handleMarkPaid(app.id)} className="px-4 py-2 text-xs font-bold bg-slate-900 text-white rounded-lg hover:bg-slate-700 shadow-sm">Mark Paid</button>
-                                )
                               )}
-                              {app.status === 'rejected' && <span className="text-red-400 font-bold text-sm">✕ Declined</span>}
                             </div>
                           </div>
-                        )
-                      })}
-                    </div>
-                  )}
+                        ))
+                    )}
+                  </div>
                 </div>
-
-              </div>
-            ))
-          )}
+            )
+          })}
         </div>
-
       </div>
 
-      {/* ✅ REVIEW MODAL */}
+      {/* MODALS */}
       {reviewModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full animate-in fade-in zoom-in-95">
-            <h3 className="text-2xl font-black text-primary mb-2">Review {reviewTarget?.name}</h3>
-            <p className="text-slate-500 text-sm mb-6">How was their performance on this job?</p>
-            
-            <div className="flex justify-center gap-2 mb-6">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button 
-                  key={star} 
-                  onClick={() => setRating(star)} 
-                  className={`text-4xl transition-transform hover:scale-110 ${rating >= star ? 'text-yellow-400' : 'text-slate-200'}`}
-                >
-                  ★
-                </button>
-              ))}
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full">
+            <h3 className="text-2xl font-black mb-4">Review {reviewTarget?.name}</h3>
+            <div className="flex gap-2 mb-4">
+                {[1,2,3,4,5].map(star => (
+                    <button key={star} onClick={() => setRating(star)} className={`text-2xl ${rating >= star ? 'text-yellow-400' : 'text-slate-200'}`}>★</button>
+                ))}
             </div>
-
-            <textarea 
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="Write a brief comment (optional)..."
-              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl h-32 mb-6 outline-none focus:ring-2 focus:ring-secondary"
-            />
-
-            <div className="flex gap-4">
-              <button onClick={() => setReviewModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl">Cancel</button>
-              <button onClick={submitReview} className="flex-1 py-3 bg-secondary text-white font-bold rounded-xl hover:bg-teal-600 shadow-lg">Submit Review</button>
+            <textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl h-32 mb-6" placeholder="Leave a comment..." />
+            <div className="flex gap-3">
+                <button onClick={() => setReviewModalOpen(false)} className="flex-1 py-3 font-bold text-slate-400">Cancel</button>
+                <button onClick={submitReview} className="flex-1 bg-secondary text-white font-bold py-3 rounded-xl">Submit</button>
             </div>
           </div>
         </div>
       )}
 
+      {inviteModalData.open && (
+        <InviteTalentModal eventId={eventId} jobId={inviteModalData.jobId} jobTitle={inviteModalData.jobTitle} onClose={() => setInviteModalData({ open: false })} />
+      )}
+
+      {/* ✅ CORRECTED CHAT WINDOW LOGIC */}
+      {activeChat && event && (
+        <ChatWindow 
+          conversationId={activeChat.id}
+          currentUserId={event.organizer_id} 
+          otherUserName={activeChat.name}
+          onClose={() => setActiveChat(null)}
+        />
+      )}
     </div>
   )
 }

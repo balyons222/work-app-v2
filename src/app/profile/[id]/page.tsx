@@ -1,158 +1,242 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-// ✅ FIXED: Use absolute path with @ alias
 import { createClient } from '@/src/utils/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-// ✅ FIXED: Use absolute path with @ alias
-import StarRating from '@/src/components/StarRating'
 
-export default function PublicProfilePage() {
+export default function ProfilePage() {
   const [profile, setProfile] = useState<any>(null)
+  const [reviews, setReviews] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<any>(null)
   
+  // ✅ Control how many reviews are visible (Default 3)
+  const [visibleCount, setVisibleCount] = useState(3)
+
   const supabase = createClient()
   const params = useParams()
   const router = useRouter()
-  // safely cast the param to string
-  const profileId = params?.id as string
+  const userId = params?.id as string
 
   useEffect(() => {
-    async function loadProfile() {
-      if (!profileId) return
-
-      // 1. Get Current User
-      const { data: { user } } = await supabase.auth.getUser()
-      setCurrentUser(user)
-
-      // 2. Fetch the Profile being viewed
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', profileId)
-        .single()
-
-      if (error) {
-        console.error('Error fetching profile:', error)
-        toast.error('Profile not found')
-      } else {
-        setProfile(data)
-      }
-      setLoading(false)
-    }
-
     loadProfile()
-  }, [profileId, supabase])
+  }, [userId])
 
-  const handleContact = async () => {
-    if (!currentUser) {
-      toast.error('Please log in to contact this user')
-      router.push('/login')
+  async function loadProfile() {
+    const { data: { user } } = await supabase.auth.getUser()
+    setCurrentUser(user)
+
+    // 1. Fetch Profile Info
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+
+    if (error) {
+      toast.error('User not found')
+      router.push('/dashboard')
       return
     }
-    toast.success(`Feature coming soon: Chat with ${profile.full_name}`)
+    setProfile(data)
+
+    // 2. Fetch Reviews
+    const { data: reviewsData } = await supabase
+      .from('reviews')
+      .select(`
+        *,
+        reviewer:profiles!reviewer_id ( full_name, avatar_url, role )
+      `)
+      .eq('reviewee_id', userId)
+      .neq('status', 'removed') 
+      .order('created_at', { ascending: false })
+
+    setReviews(reviewsData || [])
+    setLoading(false)
   }
 
-  // Helper for Skills
-  const renderSkills = () => {
-    if (!profile?.skills) return <span className="text-slate-400 italic">No skills listed</span>
-    
-    let skillsArray = []
-    if (Array.isArray(profile.skills)) {
-      skillsArray = profile.skills
-    } else if (typeof profile.skills === 'string') {
-      skillsArray = profile.skills.split(',')
+  // ✅ HANDLE REPORT (Preserved)
+  const handleReport = async (reviewId: string) => {
+    const reason = prompt("Why are you reporting this review? (e.g. Spam, Harassment, Fake)")
+    if (!reason) return
+
+    const { error } = await supabase
+      .from('reviews')
+      .update({ 
+        status: 'flagged',
+        report_reason: reason 
+      })
+      .eq('id', reviewId)
+
+    if (error) {
+      toast.error("Could not report review.")
+    } else {
+      toast.success("Review flagged for admin attention.")
     }
-
-    return skillsArray.map((s: string, i: number) => (
-      <span key={i} className="px-3 py-1 bg-teal-50 text-secondary border border-teal-100 text-xs font-bold uppercase rounded-md">
-        {s.trim()}
-      </span>
-    ))
   }
 
-  if (loading) return <div className="p-20 text-center">Loading Profile...</div>
-  if (!profile) return <div className="p-20 text-center">Profile not found.</div>
+  // Calculate Average Rating
+  const averageRating = reviews.length > 0
+    ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
+    : 'New'
+
+  const starCount = Math.round(Number(averageRating) || 0)
+
+  if (loading) return <div className="p-20 text-center text-slate-400">Loading Profile...</div>
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4">
-      <div className="max-w-3xl mx-auto">
-        
-        {/* Back Button */}
-        <Link href="/search" className="inline-flex items-center text-sm font-bold text-slate-400 hover:text-primary mb-8 transition-colors">
-          ← Back to Search
+      <div className="max-w-4xl mx-auto">
+        <Link href="/dashboard" className="inline-flex items-center text-sm font-bold text-slate-400 hover:text-primary mb-8 transition-colors">
+          ← Back to Dashboard
         </Link>
 
-        {/* Profile Card */}
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-          
-          {/* Header */}
-          <div className="p-8 md:p-12 flex flex-col md:flex-row items-center gap-8 border-b border-slate-100">
-            <div className="h-32 w-32 rounded-full bg-slate-100 border-4 border-white shadow-lg overflow-hidden shrink-0">
-              {profile.avatar_url ? (
-                <img src={profile.avatar_url} alt={profile.full_name} className="h-full w-full object-cover" />
-              ) : (
-                <div className="h-full w-full flex items-center justify-center text-4xl font-bold text-slate-300">
-                  {profile.full_name?.charAt(0) || 'U'}
+        {/* 1. PROFILE HEADER CARD */}
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+          <div className="h-32 bg-gradient-to-r from-slate-900 to-slate-800"></div>
+          <div className="px-8 pb-8">
+            <div className="relative flex justify-between items-end -mt-12 mb-6">
+              <div className="h-24 w-24 rounded-full bg-white p-1 shadow-lg">
+                <div className="h-full w-full rounded-full bg-slate-200 overflow-hidden flex items-center justify-center text-2xl font-bold text-slate-400">
+                  {profile.avatar_url ? (
+                    <img src={profile.avatar_url} alt="Profile" className="h-full w-full object-cover" />
+                  ) : (
+                    profile.full_name?.charAt(0)
+                  )}
                 </div>
+              </div>
+              
+              {currentUser?.id === userId && (
+                <Link href="/setup-profile" className="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-200 transition-all">
+                  Edit Profile
+                </Link>
               )}
             </div>
-            <div className="text-center md:text-left">
-              <h1 className="text-3xl font-black text-primary mb-2">{profile.full_name}</h1>
-              <p className="text-lg text-slate-500 font-medium flex items-center justify-center md:justify-start gap-2">
-                📍 {profile.location || 'Location Not Set'}
+
+            <div>
+              <h1 className="text-3xl font-black text-slate-900 mb-1">{profile.full_name}</h1>
+              <p className="text-secondary font-bold uppercase text-xs tracking-widest mb-4">
+                {profile.role} • {profile.location || 'Location not set'}
               </p>
               
-              <div className="flex items-center justify-center md:justify-start gap-3 mt-4">
-                <span className="px-4 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-black uppercase tracking-widest">
-                  {profile.role}
-                </span>
-                {/* StarRating Component */}
-                <StarRating userId={profile.id} readOnly />
+              {/* ✅ DYNAMIC SKILLS SECTION (Replaces Hardcoded Tags) */}
+              <div className="flex flex-wrap gap-2 mb-6">
+                {profile.skills && profile.skills.length > 0 ? (
+                  profile.skills.map((tag: string, index: number) => (
+                    <span key={index} className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-full text-[10px] font-bold text-slate-500 uppercase">
+                      {tag}
+                    </span>
+                  ))
+                ) : (
+                  // Fallback if no specific skills listed
+                  <span className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-full text-[10px] font-bold text-slate-500 uppercase">
+                    {profile.role || 'General Staff'}
+                  </span>
+                )}
+              </div>
+
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">About</h3>
+                <p className="text-slate-600 leading-relaxed whitespace-pre-line">
+                  {profile.bio || "No bio provided yet."}
+                </p>
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Details */}
-          <div className="p-8 md:p-12 bg-slate-50/50">
-            <div className="grid gap-10">
-              
-              {/* Bio */}
-              <section>
-                <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">About</h3>
-                <p className="text-slate-700 leading-relaxed text-lg">
-                  {profile.bio || "This user hasn't written a bio yet."}
-                </p>
-              </section>
-
-              {/* Skills */}
-              <section>
-                <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">
-                  {profile.role === 'organizer' ? 'Events Managed' : 'Skills & Roles'}
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {renderSkills()}
-                </div>
-              </section>
-
-              {/* Actions */}
-              <section className="pt-8 border-t border-slate-200 flex flex-col sm:flex-row gap-4">
-                 {currentUser?.id !== profile.id && (
-                   <button 
-                    onClick={handleContact}
-                    className="flex-1 px-8 py-3 bg-primary text-white font-bold rounded-xl hover:bg-slate-800 transition-all shadow-lg"
-                   >
-                     Message {profile.full_name.split(' ')[0]}
-                   </button>
-                 )}
-              </section>
-
+        {/* 2. REPUTATION & REVIEWS */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          
+          {/* A. SCORE CARD */}
+          <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm text-center h-fit">
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Reputation Score</h3>
+            <div className="text-5xl font-black text-slate-900 mb-2">{averageRating}</div>
+            <div className="flex justify-center gap-1 text-yellow-400 text-xl mb-2">
+              {[...Array(5)].map((_, i) => (
+                <span key={i} className={i < starCount ? "text-yellow-400" : "text-slate-200"}>★</span>
+              ))}
             </div>
+            <p className="text-xs font-bold text-slate-400 uppercase">{reviews.length} Verified Reviews</p>
           </div>
 
+          {/* B. REVIEWS LIST */}
+          <div className="md:col-span-2 space-y-6">
+            <h3 className="text-xl font-black text-slate-900">Recent Feedback</h3>
+            
+            {reviews.length === 0 ? (
+              <div className="bg-white p-12 rounded-3xl border border-dashed border-slate-200 text-center text-slate-400">
+                No reviews yet. Hire this person to be the first!
+              </div>
+            ) : (
+              <>
+                {/* MAP ONLY VISIBLE REVIEWS */}
+                {reviews.slice(0, visibleCount).map((review) => (
+                  <div key={review.id} className="relative bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:border-secondary/30 transition-all group">
+                    
+                    {/* Report Button */}
+                    {review.status !== 'flagged' && currentUser && (
+                      <button 
+                        onClick={() => handleReport(review.id)}
+                        className="absolute top-4 right-4 text-xs text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Report this review"
+                      >
+                        🏳️ Report
+                      </button>
+                    )}
+                    {review.status === 'flagged' && (
+                      <span className="absolute top-4 right-4 text-[10px] font-bold text-red-400 bg-red-50 px-2 py-1 rounded">
+                        ⚠️ Under Review
+                      </span>
+                    )}
+
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-full bg-slate-100 overflow-hidden">
+                          {review.reviewer?.avatar_url ? (
+                            <img src={review.reviewer.avatar_url} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center font-bold text-slate-400 text-xs">
+                              {review.reviewer?.full_name?.charAt(0)}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-900 text-sm">{review.reviewer?.full_name || 'Anonymous User'}</p>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold">{review.reviewer?.role || 'Member'}</p>
+                        </div>
+                      </div>
+                      <div className="flex text-yellow-400 text-sm">
+                        {[...Array(5)].map((_, i) => (
+                           <span key={i} className={i < review.rating ? "text-yellow-400" : "text-slate-200"}>★</span>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    {review.comment && (
+                      <p className="text-slate-600 text-sm leading-relaxed">"{review.comment}"</p>
+                    )}
+                    
+                    <p className="text-[10px] text-slate-300 font-bold uppercase mt-4 text-right">
+                      {new Date(review.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                ))}
+
+                {/* SHOW MORE BUTTON */}
+                {visibleCount < reviews.length && (
+                  <button 
+                    onClick={() => setVisibleCount(prev => prev + 5)}
+                    className="w-full py-3 text-sm font-bold text-slate-500 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"
+                  >
+                    Show More Reviews ({reviews.length - visibleCount} remaining)
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
