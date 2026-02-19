@@ -1,34 +1,7 @@
 'use client'
-import { useState, useEffect } from 'react'
+
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/src/utils/supabase/client'
-import toast from 'react-hot-toast'
-
-// 🛠️ US STATES LIST
-const US_STATES = [
-  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
-  "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
-  "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"
-]
-
-// 🛠️ CATEGORIZED ROLES CONFIGURATION
-const ROLE_CATEGORIES = {
-  "Operations": [
-    "General Event Support", "Site Lead", "Site Manager", "Finish Line Lead", "Start Line Lead", "Course Lead", 
-    "Vendor Manager", "Project Manager", "Equipment Operator", "Forklift Operator", "Truck Driver (nonCDL)", 
-    "Truck Driver (CDL)", "Electrician/Power", "Volunteer Coordinator", "Expo Lead", "Expo Support", "Warehouse Coordinator"
-  ],
-  "Technology": [
-    "Timer (Mylaps)", "Timer (Chronotrack)", "Timer (Race Result)", "Registration Support (Run Signup)", 
-    "Registration Support (Race Roster)", "Registration Support (Haku)", "Sound/Audio"
-  ],
-  "Marketing/PR/Communications": [
-    "Race Announcer", "Public Relations", "Communications Lead", "Marketing Support", "Content Creator", 
-    "Social Media Influencer Coordinator", "Social Media Influencer", "Photographer - Content", 
-    "Photographer - Individual Runner", "Community Outreach"
-  ]
-}
 import { createClient } from '@/src/utils/supabase/client'
 import toast from 'react-hot-toast'
 
@@ -59,7 +32,6 @@ const ROLE_CATEGORIES = {
 
 export default function SetupProfile() {
   const [step, setStep] = useState(1)
-  const [step, setStep] = useState(1)
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [role, setRole] = useState('contractor')
@@ -73,8 +45,6 @@ export default function SetupProfile() {
   
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  
   const [uploading, setUploading] = useState(false)
   
   const router = useRouter()
@@ -146,10 +116,6 @@ export default function SetupProfile() {
   const handleSubmit = async () => {
     setLoading(true)
     
-    // Validate location only if it's shown? 
-    // Actually, Organizers might want location too, but let's keep it simple.
-    // If you want Organizers to SKIP location, we need to handle that.
-    // Assuming Organizers still need location for now.
     if (!city || !state) {
       toast.error('Please enter both City and State')
       setLoading(false)
@@ -164,7 +130,6 @@ export default function SetupProfile() {
         const { error } = await supabase.from('profiles').upsert({
           id: user.id,
           full_name: fullName,
-          phone: phone, 
           phone: phone, 
           role: role,
           bio: bio,
@@ -189,16 +154,8 @@ export default function SetupProfile() {
     }
   }
 
-  // ✅ UPDATED NAV LOGIC
   const nextStep = () => {
     if (step === 1 && role === 'organizer') {
-      // If Organizer, Jump to Step 3 (Bio), skipping Roles/Location check
-      // Wait, Step 2 contains Location too. 
-      // Do you want Organizers to set Location? Usually yes.
-      // If they need location, they must go to Step 2.
-      // If the issue is simply that Step 2 UI was confusing, stick to Step 2.
-      
-      // If you want Organizers to SEE Step 2 (for location) but NOT roles:
       setStep(s => s + 1)
     } else {
       setStep(s => s + 1)
@@ -208,52 +165,6 @@ export default function SetupProfile() {
   const prevStep = () => setStep(s => s - 1)
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center py-12 px-4">
-      {/* Progress Bar */}
-      <div className="max-w-md w-full mb-8">
-        <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
-          <div className="h-full bg-secondary transition-all duration-500" style={{ width: `${(step / 3) * 100}%` }} />
-        </div>
-        <p className="text-right text-[10px] font-black text-slate-400 mt-2 uppercase tracking-widest">Step {step} of 3</p>
-      </div>
-
-      <div className="max-w-2xl w-full bg-white rounded-3xl shadow-xl p-8 md:p-10 border border-slate-200">
-        
-        {/* STEP 1: IDENTITY */}
-        {step === 1 && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-2xl font-black text-primary">The Basics</h2>
-            <div className="flex flex-col items-center">
-              <div className="h-28 w-28 rounded-full bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden relative group">
-                {avatarUrl ? (
-                  <img src={avatarUrl} alt="Avatar" className="h-full w-full object-cover" />
-                ) : (
-                  <span className="text-slate-300 text-3xl">👤</span>
-                )}
-                <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
-                  <span className="text-white text-xs font-bold">{uploading ? '...' : 'Change'}</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={uploadAvatar} disabled={uploading} />
-                </label>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <input value={fullName} placeholder="Full Name" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setFullName(e.target.value)} />
-              
-              <input 
-                type="tel"
-                value={phone}
-                placeholder="Mobile Phone (for job coordination)"
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" 
-                onChange={(e) => setPhone(e.target.value)} 
-              />
-
-              <select value={role} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setRole(e.target.value)}>
-                <option value="contractor">Event Professional</option>
-                <option value="organizer">Event Organizer</option>
-              </select>
-            </div>
-            <button onClick={nextStep} disabled={!fullName || !phone} className="w-full bg-primary text-white font-bold py-4 rounded-xl disabled:opacity-50 hover:bg-slate-800 transition-all">Continue</button>
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center py-12 px-4">
       {/* Progress Bar */}
       <div className="max-w-md w-full mb-8">
@@ -325,7 +236,6 @@ export default function SetupProfile() {
               </select>
             </div>
 
-            {/* ✅ FIXED CONDITIONAL: Roles List Only for Contractors */}
             {role === 'contractor' && (
               <div className="h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 sticky top-0 bg-white pb-2 z-10">Select all roles you are qualified for:</p>
@@ -347,8 +257,6 @@ export default function SetupProfile() {
                 ))}
               </div>
             )}
-            
-            {/* If Organizer, show nothing extra here, just location above */}
 
             <div className="flex gap-4 pt-4 border-t border-slate-100">
               <button onClick={prevStep} className="flex-1 font-bold text-slate-400 hover:text-primary transition-colors">Back</button>
