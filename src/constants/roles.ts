@@ -12,6 +12,7 @@ export const JOB_ROLES = {
     "Forklift Operator",
     "Truck Driver (CDL)",
     "Electrician",
+    "Course Measurer",
   ],
   Technology: [
     "Timer (Mylaps)",
