@@ -194,6 +194,7 @@ function DashboardContent() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8 relative">
       <div className="max-w-6xl mx-auto">
+        
         <div className="flex gap-6 border-b border-slate-200 mb-8">
           <button onClick={() => { setActiveTab('overview'); setUnreadCount(0); }} className={`pb-4 text-sm font-bold border-b-2 flex items-center gap-2 ${activeTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>
             Overview {unreadCount > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full animate-bounce">{unreadCount}</span>}

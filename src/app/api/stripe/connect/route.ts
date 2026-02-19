@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
+import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
-// 1. Initialize Resend
-const resend = new Resend(process.env.RESEND_API_KEY);
+// 1. Initialize Stripe
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2023-10-16' as any, // Use your current API version
+});
 
-// 2. Initialize Supabase Admin (MUST use SERVICE_ROLE_KEY)
+// 2. Initialize Supabase Admin
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -14,51 +16,61 @@ const supabaseAdmin = createClient(
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { userId, title, message, link } = body;
+    const { userId } = body;
 
-    console.log(`[Notify API] Attempting to notify User ID: ${userId}`);
-
-    // 3. Get the recipient's email securely
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
-
-    if (userError || !user?.email) {
-      console.error('[Notify API] User Lookup Error:', userError);
-      return NextResponse.json({ error: 'User email not found' }, { status: 404 });
+    if (!userId) {
+      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
-    console.log(`[Notify API] Found email: ${user.email}. Sending via Resend...`);
+    console.log(`[Stripe API] Starting onboarding for User: ${userId}`);
 
-    // 4. Send the Email via Resend
-    const { data, error } = await resend.emails.send({
-      from: 'FxD Staffing <hello@fxdevents.com>', // ✅ UPDATED HERE
-      to: [user.email], 
-      subject: `🔔 ${title}`,
-      html: `
-        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-          <h1 style="color: #333;">${title}</h1>
-          <p style="font-size: 16px; color: #555;">${message}</p>
-          <br/>
-          <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com'}${link}" 
-             style="background-color: #000; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-             View Dashboard
-          </a>
-          <p style="margin-top: 30px; font-size: 12px; color: #999;">
-            You received this notification from FxD Event Staffing.
-          </p>
-        </div>
-      `,
+    // 3. Get the user's profile to see if they already have a Stripe ID
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('stripe_account_id, email')
+      .eq('id', userId)
+      .single();
+
+    if (profileError || !profile) {
+      throw new Error('Profile not found in database');
+    }
+
+    let stripeAccountId = profile.stripe_account_id;
+
+    // 4. If they don't have a Stripe account yet, create one!
+    if (!stripeAccountId) {
+      console.log('[Stripe API] Creating new Stripe Express account...');
+      const account = await stripe.accounts.create({
+        type: 'express',
+        email: profile.email || undefined,
+      });
+      
+      stripeAccountId = account.id;
+
+      // Save this new Stripe ID to your Supabase database
+      await supabaseAdmin
+        .from('profiles')
+        .update({ stripe_account_id: stripeAccountId })
+        .eq('id', userId);
+    }
+
+    // 5. Generate the magic Stripe Onboarding Link
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com';
+    
+    console.log(`[Stripe API] Generating link. Return URL: ${siteUrl}/dashboard`);
+    
+    const accountLink = await stripe.accountLinks.create({
+      account: stripeAccountId,
+      refresh_url: `${siteUrl}/dashboard`,
+      return_url: `${siteUrl}/dashboard?success=true`,
+      type: 'account_onboarding',
     });
 
-    if (error) {
-      console.error('[Notify API] Resend Error:', error);
-      return NextResponse.json({ error }, { status: 500 });
-    }
-
-    console.log('[Notify API] Success:', data);
-    return NextResponse.json(data);
+    // 6. Send the link back to the frontend so it can redirect the user
+    return NextResponse.json({ url: accountLink.url });
 
   } catch (err: any) {
-    console.error('[Notify API] Server Error:', err.message);
+    console.error('[Stripe API] Server Error:', err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
