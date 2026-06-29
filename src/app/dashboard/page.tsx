@@ -470,7 +470,7 @@ function DashboardContent() {
              )}
           </div>
         )}
-
+</div>
       {reviewModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm"><div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full"><h3 className="text-2xl font-black text-primary mb-2">Rate Organizer</h3><div className="flex justify-center gap-2 mb-6">{[1, 2, 3, 4, 5].map((star) => (<button key={star} onClick={() => setRating(star)} className={`text-4xl ${rating >= star ? 'text-yellow-400' : 'text-slate-200'}`}>★</button>))}</div><textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl h-32 mb-6" /><div className="flex gap-4"><button onClick={() => setReviewModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancel</button><button onClick={submitReview} className="flex-1 py-3 bg-secondary text-white font-bold rounded-xl shadow-lg">Submit Review</button></div></div></div>
       )}
