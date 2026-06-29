@@ -182,6 +182,63 @@ function DashboardContent() {
     if (!error) { toast.success('Review Submitted!'); await sendNotification({ userId: reviewTarget.organizerId, title: "New Review! ⭐", message: `A worker left you a review.`, link: `/dashboard`, type: "success" }); setReviewModalOpen(false); loadDashboardData() }
   }
 
+  const handleDuplicateEvent = async (originalEventId: string) => {
+    // 1. Ask the organizer for the date of the new event
+    const newDateStr = window.prompt("Enter the date for the new event (YYYY-MM-DD):", "");
+    if (!newDateStr) return; // They clicked cancel
+
+    try {
+      // 2. Fetch the original event AND all its jobs
+      const { data: originalEvent, error: fetchErr } = await supabase
+        .from('events')
+        .select('*, jobs(*)')
+        .eq('id', originalEventId)
+        .single();
+
+      if (fetchErr || !originalEvent) throw new Error("Could not fetch original event.");
+
+      // 3. Strip out the old IDs and insert the new Event
+      const { jobs, id, created_at, ...eventData } = originalEvent;
+      
+      const { data: newEvent, error: insertEventErr } = await supabase
+        .from('events')
+        .insert({
+          ...eventData,
+          title: `${eventData.title} (Copy)`,
+          event_date: newDateStr
+        })
+        .select()
+        .single();
+
+      if (insertEventErr || !newEvent) throw new Error("Failed to duplicate the event.");
+
+      // 4. Strip out the old job IDs and insert the new Jobs tied to the new Event
+      if (jobs && jobs.length > 0) {
+        const jobsToInsert = jobs.map((job: any) => {
+          const { id, created_at, event_id, ...jobData } = job;
+          return {
+            ...jobData,
+            event_id: newEvent.id, // Tie it to the copied event
+            status: 'open'         // Make sure the new jobs are accepting applications
+          };
+        });
+
+        const { error: jobsErr } = await supabase.from('jobs').insert(jobsToInsert);
+        if (jobsErr) {
+          toast.error("Event copied, but jobs failed to transfer.");
+          loadDashboardData();
+          return;
+        }
+      }
+
+      toast.success("Event and staff requirements duplicated!");
+      loadDashboardData(); // Refresh the dashboard to show the new event
+
+    } catch (error: any) {
+      toast.error(error.message || "Something went wrong.");
+    }
+  }
+
   // Helper for safe status checks
   const normalize = (s: string) => s?.toLowerCase().trim() || ''
   const bookedJobs = myApps.filter(a => normalize(a.status) === 'approved' && normalize(a.payment_status) !== 'paid')
@@ -358,18 +415,61 @@ function DashboardContent() {
           </div>
         )}
 
-        {/* ORGANIZER DASHBOARD (Unchanged Logic, simplified for brevity here but still present) */}
+        {/* ORGANIZER DASHBOARD */}
         {profile?.role?.toLowerCase() === 'organizer' && (
           <div className="space-y-8">
              {activeTab === 'reports' ? (
                 <div className="space-y-6"><h2 className="text-xl font-black text-slate-900">Event Budget Analysis</h2>{events.map(event => (<div key={event.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><div className="flex justify-between mb-4"><h3 className="font-bold text-lg">{event.title}</h3><span className={`text-xs font-bold px-2 py-1 rounded ${event.remaining_budget < 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>{event.remaining_budget < 0 ? 'OVER BUDGET' : 'On Track'}</span></div><div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden mb-2"><div className={`h-full ${event.remaining_budget < 0 ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${Math.min((event.committed_spend / (event.budget || 1)) * 100, 100)}%` }}></div></div><div className="flex justify-between text-xs font-bold text-slate-500"><span>Spent: ${event.committed_spend}</span><span>Budget: ${event.budget}</span></div></div>))}</div>
              ) : (
-                <div className="space-y-8"><div className="flex justify-between items-end mb-8"><div><h2 className="text-2xl font-bold text-gray-900">Event Manager</h2><p className="text-gray-500">Manage your events and hiring budget.</p></div><button onClick={handleCreateEventClick} className="bg-black text-white px-6 py-2 rounded-lg font-bold">{isCreating ? 'Cancel' : '+ Add Event'}</button></div>{isCreating && (<div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-8"><h2 className="text-xl font-bold mb-4">1. Create New Event Container</h2><form onSubmit={handleCreateEvent} className="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="text" placeholder="Event Name" className="p-3 border rounded-lg" value={title} onChange={e => setTitle(e.target.value)} required /><input type="text" placeholder="Location" className="p-3 border rounded-lg" value={location} onChange={e => setLocation(e.target.value)} required /><div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Event Date</label><input type="date" className="p-3 border rounded-lg" value={date} onChange={e => setDate(e.target.value)} required /></div><div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Visibility</label><select value={visibility} onChange={(e) => setVisibility(e.target.value)} className="p-3 border rounded-lg bg-white font-bold"><option value="public">🌍 Public</option><option value="private">🔒 Private</option></select></div><input type="number" placeholder="Total Labor Budget" className="md:col-span-2 p-3 border rounded-lg" value={budget} onChange={e => setBudget(e.target.value)} required /><button type="submit" className="md:col-span-2 bg-secondary text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition-colors">Create Event & Start Staffing →</button></form></div>)}<div className="grid gap-6">{events.map(event => (<div key={event.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 group relative"><div onClick={() => router.push(`/dashboard/event/${event.id}`)} className="cursor-pointer"><div className="flex justify-between items-start"><div><h3 className="text-xl font-bold text-gray-900 group-hover:text-primary transition-colors">{event.title} &rarr;</h3><p className="text-sm text-gray-500 mt-1">📍 {event.location} • 📅 {event.event_date ? new Date(event.event_date).toLocaleDateString() : 'No date set'}</p></div><div className="text-right"><span className="text-xl font-bold text-green-700">${event.budget}</span></div></div></div><button onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event.id); }} className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-red-500 font-bold p-2">✕</button></div>))}</div></div>
+                <div className="space-y-8">
+                  <div className="flex justify-between items-end mb-8">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-900">Event Manager</h2>
+                      <p className="text-gray-500">Manage your events and hiring budget.</p>
+                    </div>
+                    <button onClick={handleCreateEventClick} className="bg-black text-white px-6 py-2 rounded-lg font-bold">{isCreating ? 'Cancel' : '+ Add Event'}</button>
+                  </div>
+                  
+                  {isCreating && (<div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-8"><h2 className="text-xl font-bold mb-4">1. Create New Event Container</h2><form onSubmit={handleCreateEvent} className="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="text" placeholder="Event Name" className="p-3 border rounded-lg" value={title} onChange={e => setTitle(e.target.value)} required /><input type="text" placeholder="Location" className="p-3 border rounded-lg" value={location} onChange={e => setLocation(e.target.value)} required /><div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Event Date</label><input type="date" className="p-3 border rounded-lg" value={date} onChange={e => setDate(e.target.value)} required /></div><div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Visibility</label><select value={visibility} onChange={(e) => setVisibility(e.target.value)} className="p-3 border rounded-lg bg-white font-bold"><option value="public">🌍 Public</option><option value="private">🔒 Private</option></select></div><input type="number" placeholder="Total Labor Budget" className="md:col-span-2 p-3 border rounded-lg" value={budget} onChange={e => setBudget(e.target.value)} required /><button type="submit" className="md:col-span-2 bg-secondary text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition-colors">Create Event & Start Staffing →</button></form></div>)}
+                  
+                  <div className="grid gap-6">
+                    {events.map(event => (
+                      <div key={event.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 group relative">
+                        <div onClick={() => router.push(`/dashboard/event/${event.id}`)} className="cursor-pointer">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h3 className="text-xl font-bold text-gray-900 group-hover:text-primary transition-colors">{event.title} &rarr;</h3>
+                              <p className="text-sm text-gray-500 mt-1">📍 {event.location} • 📅 {event.event_date ? new Date(event.event_date).toLocaleDateString() : 'No date set'}</p>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-xl font-bold text-green-700">${event.budget}</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* THE NEW DUPLICATE AND DELETE BUTTONS */}
+                        <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDuplicateEvent(event.id); }} 
+                            className="bg-slate-100 text-slate-600 hover:bg-secondary hover:text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm"
+                          >
+                            📋 Duplicate
+                          </button>
+                          
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event.id); }} 
+                            className="bg-red-50 text-red-500 hover:bg-red-500 hover:text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm"
+                          >
+                            ✕ Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
              )}
           </div>
         )}
-
-      </div>
 
       {reviewModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm"><div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full"><h3 className="text-2xl font-black text-primary mb-2">Rate Organizer</h3><div className="flex justify-center gap-2 mb-6">{[1, 2, 3, 4, 5].map((star) => (<button key={star} onClick={() => setRating(star)} className={`text-4xl ${rating >= star ? 'text-yellow-400' : 'text-slate-200'}`}>★</button>))}</div><textarea value={comment} onChange={(e) => setComment(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl h-32 mb-6" /><div className="flex gap-4"><button onClick={() => setReviewModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancel</button><button onClick={submitReview} className="flex-1 py-3 bg-secondary text-white font-bold rounded-xl shadow-lg">Submit Review</button></div></div></div>
