@@ -1,18 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/src/utils/supabase/client'
 import toast from 'react-hot-toast'
 
-// 🛠️ US STATES LIST
 const US_STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
   "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
   "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"
 ]
 
-// 🛠️ CATEGORIZED ROLES CONFIGURATION
 const ROLE_CATEGORIES = {
   "Operations": [
     "General Event Support", "Site Lead", "Site Manager", "Finish Line Lead", "Start Line Lead", "Course Lead", 
@@ -30,24 +28,23 @@ const ROLE_CATEGORIES = {
   ]
 }
 
-export default function SetupProfile() {
-  const [step, setStep] = useState(1)
+function ProfileForm() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const initialStep = searchParams.get('step') ? parseInt(searchParams.get('step') as string) : 1
+  
+  const [step, setStep] = useState(initialStep)
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [role, setRole] = useState('contractor')
   const [bio, setBio] = useState('')
-  
-  // Location State
   const [city, setCity] = useState('')
   const [state, setState] = useState('')
-
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
-  
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   
-  const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
@@ -58,7 +55,7 @@ export default function SetupProfile() {
         if (data) {
           setFullName(data.full_name || '')
           setPhone(data.phone || '')
-          setRole(data.role || 'contractor')
+          setRole(data.role?.toLowerCase() || 'contractor')
           setBio(data.bio || '')
           setAvatarUrl(data.avatar_url || null)
           
@@ -95,14 +92,11 @@ export default function SetupProfile() {
     try {
       setUploading(true)
       if (!event.target.files || event.target.files.length === 0) return
-
       const file = event.target.files[0]
       const fileExt = file.name.split('.').pop()
       const fileName = `${Date.now()}.${fileExt}`
-
       const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file)
       if (uploadError) throw uploadError
-      
       const { data } = supabase.storage.from('avatars').getPublicUrl(fileName)
       setAvatarUrl(data.publicUrl)
       toast.success('Photo uploaded!')
@@ -115,7 +109,6 @@ export default function SetupProfile() {
 
   const handleSubmit = async () => {
     setLoading(true)
-    
     if (!city || !state) {
       toast.error('Please enter both City and State')
       setLoading(false)
@@ -140,7 +133,7 @@ export default function SetupProfile() {
         })
 
         if (!error) {
-          toast.success('Profile finalized!')
+          toast.success('Profile updated!')
           router.push(role === 'contractor' ? '/jobs' : '/dashboard')
           router.refresh()
         } else {
@@ -154,19 +147,11 @@ export default function SetupProfile() {
     }
   }
 
-  const nextStep = () => {
-    if (step === 1 && role === 'organizer') {
-      setStep(s => s + 1)
-    } else {
-      setStep(s => s + 1)
-    }
-  }
-
+  const nextStep = () => setStep(s => s + 1)
   const prevStep = () => setStep(s => s - 1)
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center py-12 px-4">
-      {/* Progress Bar */}
       <div className="max-w-md w-full mb-8">
         <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
           <div className="h-full bg-secondary transition-all duration-500" style={{ width: `${(step / 3) * 100}%` }} />
@@ -176,7 +161,6 @@ export default function SetupProfile() {
 
       <div className="max-w-2xl w-full bg-white rounded-3xl shadow-xl p-8 md:p-10 border border-slate-200">
         
-        {/* STEP 1: IDENTITY */}
         {step === 1 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h2 className="text-2xl font-black text-primary">The Basics</h2>
@@ -196,15 +180,7 @@ export default function SetupProfile() {
 
             <div className="space-y-4">
               <input value={fullName} placeholder="Full Name" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setFullName(e.target.value)} />
-              
-              <input 
-                type="tel"
-                value={phone}
-                placeholder="Mobile Phone (for job coordination)"
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" 
-                onChange={(e) => setPhone(e.target.value)} 
-              />
-
+              <input type="tel" value={phone} placeholder="Mobile Phone" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setPhone(e.target.value)} />
               <select value={role} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setRole(e.target.value)}>
                 <option value="contractor">Event Professional</option>
                 <option value="organizer">Event Organizer</option>
@@ -214,29 +190,19 @@ export default function SetupProfile() {
           </div>
         )}
 
-        {/* STEP 2: ROLES & LOCATION */}
         {step === 2 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-            <h2 className="text-2xl font-black text-primary">{role === 'contractor' ? 'Your Expertise' : 'Your Location'}</h2>
+            <h2 className="text-2xl font-black text-primary">{role !== 'organizer' ? 'Your Expertise' : 'Your Location'}</h2>
             
             <div className="flex gap-4">
-              <input 
-                value={city} 
-                placeholder="City (e.g. Austin)" 
-                className="w-2/3 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" 
-                onChange={(e) => setCity(e.target.value)} 
-              />
-              <select 
-                value={state}
-                onChange={(e) => setState(e.target.value)}
-                className="w-1/3 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary"
-              >
+              <input value={city} placeholder="City (e.g. Austin)" className="w-2/3 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setCity(e.target.value)} />
+              <select value={state} onChange={(e) => setState(e.target.value)} className="w-1/3 p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary">
                 <option value="">State</option>
                 {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
 
-            {role === 'contractor' && (
+            {role !== 'organizer' && (
               <div className="h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 sticky top-0 bg-white pb-2 z-10">Select all roles you are qualified for:</p>
                 {Object.entries(ROLE_CATEGORIES).map(([category, roles]) => (
@@ -260,31 +226,33 @@ export default function SetupProfile() {
 
             <div className="flex gap-4 pt-4 border-t border-slate-100">
               <button onClick={prevStep} className="flex-1 font-bold text-slate-400 hover:text-primary transition-colors">Back</button>
+              <button onClick={handleSubmit} disabled={loading} className="flex-1 bg-white text-secondary border border-secondary font-bold py-4 rounded-xl hover:bg-slate-50 transition-all">{loading ? 'Saving...' : 'Save Changes'}</button>
               <button onClick={nextStep} className="flex-1 bg-primary text-white font-bold py-4 rounded-xl hover:bg-slate-800 transition-all">Next</button>
             </div>
           </div>
         )}
 
-        {/* STEP 3: BIO */}
         {step === 3 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
             <h2 className="text-2xl font-black text-primary">The Pitch</h2>
-            <textarea 
-              value={bio} 
-              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl h-40 outline-none focus:ring-2 focus:ring-secondary" 
-              placeholder={role === 'organizer' ? "Tell us about your production company..." : "Tell us about your experience..."}
-              onChange={(e) => setBio(e.target.value)} 
-            />
+            <textarea value={bio} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl h-40 outline-none focus:ring-2 focus:ring-secondary" placeholder={role === 'organizer' ? "Tell us about your production company..." : "Tell us about your experience..."} onChange={(e) => setBio(e.target.value)} />
             <button onClick={handleSubmit} disabled={loading} className="w-full bg-secondary text-white font-bold py-4 rounded-xl shadow-lg hover:bg-teal-600 transition-all">
               {loading ? 'Finalizing...' : 'Finish Setup'}
             </button>
             <div className="flex justify-between items-center mt-4">
                <button onClick={prevStep} className="text-slate-400 font-bold text-sm">← Back</button>
-               <button onClick={handleSubmit} className="text-slate-400 font-bold text-sm hover:text-primary">Skip for now</button>
             </div>
           </div>
         )}
       </div>
     </div>
+  )
+}
+
+export default function SetupProfile() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <ProfileForm />
+    </Suspense>
   )
 }
