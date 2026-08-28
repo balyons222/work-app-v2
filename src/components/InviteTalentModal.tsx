@@ -29,7 +29,7 @@ export default function InviteTalentModal({
     const { data, error } = await supabase
       .from('profiles')
       .select('id, full_name, avatar_url, role, location')
-      .eq('role', 'contractor')
+      .neq('role', 'organizer')
       .ilike('full_name', `%${searchTerm}%`)
       .limit(5)
 
