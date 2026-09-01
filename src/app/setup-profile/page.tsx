@@ -28,6 +28,15 @@ const ROLE_CATEGORIES = {
   ]
 }
 
+const generateReferralCode = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  let code = ''
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return code
+}
+
 function ProfileForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -42,6 +51,12 @@ function ProfileForm() {
   const [state, setState] = useState('')
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
+  
+  // Referral State
+  const [inviteCode, setInviteCode] = useState('')
+  const [myReferralCode, setMyReferralCode] = useState<string | null>(null)
+  const [referredById, setReferredById] = useState<string | null>(null)
+
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   
@@ -58,6 +73,8 @@ function ProfileForm() {
           setRole(data.role?.toLowerCase() || 'contractor')
           setBio(data.bio || '')
           setAvatarUrl(data.avatar_url || null)
+          setMyReferralCode(data.referral_code || null)
+          setReferredById(data.referred_by || null)
           
           if (data.location) {
             const parts = data.location.split(', ')
@@ -107,6 +124,59 @@ function ProfileForm() {
     }
   }
 
+  const handleSaveBasicInfo = async () => {
+    if (!fullName || !phone) return toast.error('Name and phone are required')
+    setLoading(true)
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      let finalReferredBy = referredById
+
+      // Process the invite code if they entered one and aren't already referred
+      if (inviteCode && !referredById) {
+        const { data: referrer } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('referral_code', inviteCode)
+          .single()
+
+        if (referrer) {
+          finalReferredBy = referrer.id
+          setReferredById(referrer.id) // Update state
+        } else {
+          setLoading(false)
+          return toast.error('Invalid invite code')
+        }
+      }
+
+      // Generate their own unique code if they don't have one yet
+      const finalReferralCode = myReferralCode || generateReferralCode()
+      if (!myReferralCode) setMyReferralCode(finalReferralCode)
+
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          full_name: fullName,
+          phone,
+          role,
+          avatar_url: avatarUrl,
+          referred_by: finalReferredBy,
+          referral_code: finalReferralCode,
+          updated_at: new Date().toISOString(),
+        })
+
+      if (error) throw error
+      setStep(2)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save basic info')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleSubmit = async () => {
     setLoading(true)
     if (!city || !state) {
@@ -129,6 +199,8 @@ function ProfileForm() {
           skills: selectedRoles, 
           location: formattedLocation,
           avatar_url: avatarUrl,
+          referred_by: referredById,
+          referral_code: myReferralCode,
           updated_at: new Date().toISOString(),
         })
 
@@ -185,8 +257,31 @@ function ProfileForm() {
                 <option value="contractor">Event Professional</option>
                 <option value="organizer">Event Organizer</option>
               </select>
+              
+              {!referredById && (
+                <div className="flex flex-col">
+                  <label className="text-xs font-bold text-slate-400 uppercase mb-1 ml-1">
+                    Invite Code (Optional)
+                  </label>
+                  <input 
+                    type="text" 
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. FXD123" 
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary"
+                    maxLength={6}
+                  />
+                </div>
+              )}
             </div>
-            <button onClick={nextStep} disabled={!fullName || !phone} className="w-full bg-primary text-white font-bold py-4 rounded-xl disabled:opacity-50 hover:bg-slate-800 transition-all">Continue</button>
+            
+            <button 
+              onClick={handleSaveBasicInfo} 
+              disabled={!fullName || !phone || loading} 
+              className="w-full bg-primary text-white font-bold py-4 rounded-xl disabled:opacity-50 hover:bg-slate-800 transition-all"
+            >
+              {loading ? 'Saving...' : 'Continue'}
+            </button>
           </div>
         )}
 
