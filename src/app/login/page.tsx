@@ -15,6 +15,20 @@ function AuthForm() {
   const searchParams = useSearchParams()
   const supabase = createClient()
 
+  // ✅ MOVED HERE: Function is now inside the component where 'supabase' is defined
+  const handleGoogleLogin = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${location.origin}/auth/callback`,
+      },
+    })
+
+    if (error) {
+      toast.error(error.message)
+    }
+  }
+
   // Check if the URL has ?mode=signup (coming from the homepage buttons)
   useEffect(() => {
     const mode = searchParams.get('mode')
@@ -29,7 +43,6 @@ function AuthForm() {
 
     try {
       if (isSignUp) {
-        // --- SIGN UP LOGIC ---
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -40,7 +53,6 @@ function AuthForm() {
         if (error) throw error
         toast.success('Check your email to confirm your account!')
       } else {
-        // --- LOGIN LOGIC ---
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -63,6 +75,22 @@ function AuthForm() {
         <h2 className="text-3xl font-black text-center text-primary mb-8">
           {isSignUp ? 'Create an Account' : 'Welcome Back'}
         </h2>
+        
+        {/* ✅ MOVED HERE: The Google button is now inside the visible UI */}
+        <button 
+          type="button" 
+          onClick={handleGoogleLogin}
+          className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl hover:bg-slate-50 transition-colors shadow-sm mb-6"
+        >
+          <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="h-5 w-5" />
+          Continue with Google
+        </button>
+
+        <div className="relative flex py-2 items-center mb-6">
+          <div className="flex-grow border-t border-slate-200"></div>
+          <span className="flex-shrink-0 mx-4 text-slate-400 text-xs font-bold uppercase">Or use email</span>
+          <div className="flex-grow border-t border-slate-200"></div>
+        </div>
         
         <form onSubmit={handleAuth} className="space-y-4">
           <div>
@@ -109,7 +137,6 @@ function AuthForm() {
   )
 }
 
-// We wrap it in Suspense because we are using useSearchParams()
 export default function LoginPage() {
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50">Loading...</div>}>
