@@ -43,7 +43,7 @@ export default function PrivacyPolicyPage() {
           </p>
           
           <p className="mt-12 text-sm text-slate-500">
-            If you have questions or comments about this notice, you may email us at support@fxdevents.com.
+            If you have questions or comments about this notice, you may email us at hello@fxdevents.com.
           </p>
         </div>
       </div>
