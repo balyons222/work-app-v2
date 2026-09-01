@@ -125,7 +125,7 @@ function SearchContent() {
                 filteredProfiles.slice(0, visibleCount).map((profile) => (
                   <div key={profile.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col group">
                     <div className="flex items-center gap-4 mb-4">
-                      <div className="h-14 w-14 rounded-full bg-slate-100 border border-slate-200 overflow-hidden">
+                      <div className="h-14 w-14 rounded-full bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
                         {profile.avatar_url ? (
                           <img src={profile.avatar_url} alt={profile.full_name} className="h-full w-full object-cover" />
                         ) : (
@@ -134,9 +134,27 @@ function SearchContent() {
                           </div>
                         )}
                       </div>
-                      <div>
-                        <h3 className="font-bold text-lg text-primary">{profile.full_name}</h3>
-                        <p className="text-xs text-slate-500 uppercase tracking-wide">{profile.location || 'Location N/A'}</p>
+                      <div className="flex-1 min-w-0">
+                        
+                        {/* --- UPDATED: Name & Badge Container --- */}
+                        <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                          <h3 className="font-bold text-lg text-primary truncate">{profile.full_name}</h3>
+                          
+                          {/* VERIFIED REFERRAL BADGE */}
+                          {profile.referred_by && (
+                            <div className="flex items-center gap-1 bg-teal-50 border border-teal-100 px-2 py-0.5 rounded-full" title="Invited by a trusted network member">
+                              <svg className="w-2.5 h-2.5 text-secondary" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                              <span className="text-[9px] font-black text-secondary uppercase tracking-wider">
+                                Verified
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <p className="text-xs text-slate-500 uppercase tracking-wide truncate">{profile.location || 'Location N/A'}</p>
+                        
                         {profile.avgRating > 0 && (
                           <div className="flex items-center gap-1 mt-1">
                              <span className="text-yellow-400 text-xs">★</span>

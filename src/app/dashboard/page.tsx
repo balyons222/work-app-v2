@@ -182,12 +182,10 @@ function DashboardContent() {
   }
 
   const handleDuplicateEvent = async (originalEventId: string) => {
-    // 1. Ask the organizer for the date of the new event
     const newDateStr = window.prompt("Enter the date for the new event (YYYY-MM-DD):", "");
-    if (!newDateStr) return; // They clicked cancel
+    if (!newDateStr) return; 
 
     try {
-      // 2. Fetch the original event AND all its jobs
       const { data: originalEvent, error: fetchErr } = await supabase
         .from('events')
         .select('*, jobs(*)')
@@ -196,7 +194,6 @@ function DashboardContent() {
 
       if (fetchErr || !originalEvent) throw new Error("Could not fetch original event.");
 
-      // 3. Strip out the old IDs and insert the new Event
       const { jobs, id, created_at, ...eventData } = originalEvent;
       
       const { data: newEvent, error: insertEventErr } = await supabase
@@ -211,14 +208,13 @@ function DashboardContent() {
 
       if (insertEventErr || !newEvent) throw new Error("Failed to duplicate the event.");
 
-      // 4. Strip out the old job IDs and insert the new Jobs tied to the new Event
       if (jobs && jobs.length > 0) {
         const jobsToInsert = jobs.map((job: any) => {
           const { id, created_at, event_id, ...jobData } = job;
           return {
             ...jobData,
-            event_id: newEvent.id, // Tie it to the copied event
-            status: 'open'         // Make sure the new jobs are accepting applications
+            event_id: newEvent.id, 
+            status: 'open'         
           };
         });
 
@@ -231,10 +227,18 @@ function DashboardContent() {
       }
 
       toast.success("Event and staff requirements duplicated!");
-      loadDashboardData(); // Refresh the dashboard to show the new event
+      loadDashboardData(); 
 
     } catch (error: any) {
       toast.error(error.message || "Something went wrong.");
+    }
+  }
+
+  // --- NEW: Handle copying referral code ---
+  const handleCopyCode = () => {
+    if (profile?.referral_code) {
+      navigator.clipboard.writeText(profile.referral_code)
+      toast.success('Invite code copied to clipboard!')
     }
   }
 
@@ -289,6 +293,29 @@ function DashboardContent() {
             )}
           </div>
         </div>
+
+        {/* --- NEW: REFERRAL CODE CARD --- */}
+        {profile?.referral_code && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-8 max-w-sm">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
+              Your Invite Code
+            </h3>
+            <div className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl p-4">
+              <span className="text-2xl font-black text-slate-800 tracking-widest">
+                {profile.referral_code}
+              </span>
+              <button 
+                onClick={handleCopyCode}
+                className="text-secondary text-sm font-bold hover:text-teal-700 transition-colors"
+              >
+                Copy
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mt-4 leading-relaxed">
+              Share this code with other event professionals to build your trusted network.
+            </p>
+          </div>
+        )}
 
         {(profile?.role?.toLowerCase()?.includes('contractor') || profile?.role?.toLowerCase()?.includes('worker')) && (
           <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
