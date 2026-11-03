@@ -9,6 +9,7 @@ import { sendNotification } from '@/src/utils/notifications'
 import TermsModal from '@/src/components/TermsModal'
 import ChatWindow from '@/src/components/ChatWindow'
 import StripeConnectButton from '@/src/components/StripeConnectButton'
+import Image from 'next/image'
 
 function DashboardContent() {
   const [profile, setProfile] = useState<any>(null)
@@ -272,23 +273,43 @@ function DashboardContent() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
+       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
-            <div className="h-16 w-16 bg-primary rounded-full overflow-hidden flex items-center justify-center text-white text-2xl font-bold border border-slate-200">
-              {profile?.avatar_url ? <img src={profile.avatar_url} alt="Profile" className="h-full w-full object-cover" /> : profile?.full_name?.charAt(0) || 'U'}
+            <div className="h-16 w-16 bg-primary rounded-full overflow-hidden flex items-center justify-center text-white text-2xl font-bold border border-slate-200 relative">
+              {profile?.avatar_url ? (
+                <Image 
+                  src={profile.avatar_url} 
+                  alt="Profile" 
+                  fill
+                  className="object-cover"
+                />
+              ) : (
+                profile?.full_name?.charAt(0) || 'U'
+              )}
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 italic">Stay FxD, {profile?.full_name || 'Member'}</h1>
-              <p className="text-sm text-gray-500 capitalize">{profile?.role} • {profile?.location || 'Location not set'}</p>
+              <h1 className="text-2xl font-bold text-gray-900 italic">Stay FxD, {profile?.full_name?.split(' ')[0] || 'Member'}</h1>
+              <p className="text-sm text-gray-500 capitalize">
+                 {profile?.role} • {profile?.location || 'Location not set'}
+              </p>
             </div>
           </div>
+          
           <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-            <Link href="/setup-profile" className="w-full md:w-auto text-center px-6 py-2 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-all">
+            {/* Missing Rich Media Warning */}
+            {(!profile?.avatar_url || !profile?.portfolio_urls || profile?.portfolio_urls.length === 0) && (
+              <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-4 py-2 rounded-lg text-sm font-bold border border-amber-200">
+                ⚠️ Complete your portfolio to get more gigs
+              </div>
+            )}
+            
+            <Link href="/profile/edit" className="w-full md:w-auto text-center px-6 py-2 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-all text-slate-700">
               Edit Profile
             </Link>
+            
             {(profile?.role?.toLowerCase()?.includes('contractor') || profile?.role?.toLowerCase()?.includes('worker')) && (
-              <Link href="/setup-profile?step=2" className="w-full md:w-auto text-center px-6 py-2 bg-slate-100 text-slate-700 rounded-lg font-bold hover:bg-slate-200 transition-all">
-                Edit Roles & Location
+              <Link href="/profile/settings" className="w-full md:w-auto text-center px-6 py-2 bg-slate-100 text-slate-700 rounded-lg font-bold hover:bg-slate-200 transition-all">
+                Preferences
               </Link>
             )}
           </div>
@@ -360,7 +381,7 @@ function DashboardContent() {
                                     <h3 className="font-bold text-lg text-white">{eventTitle}</h3>
                                     {invite.jobs && <p className="text-indigo-200 text-sm mb-1">Role: <span className="font-bold text-white">{jobTitle}</span></p>}
                                     <p className="text-xs text-indigo-300 font-bold uppercase mb-1">Hosted by: {organizerName}</p>
-                                    <p className="text-xs text-indigo-200">📍 {eventLocation} • 📅 {eventDate ? new Date(eventDate).toLocaleDateString() : 'Date TBD'}</p>
+                                    <p className="text-xs text-indigo-200">📍 {eventLocation} 📅 {eventDate ? new Date(eventDate).toLocaleDateString() : 'Date TBD'}</p>
                                   </div>
                                   <div className="flex gap-2">
                                     <button onClick={() => handleInviteResponse(invite.id, 'declined', targetId)} className="px-3 py-2 text-xs font-bold text-white/70 hover:bg-white/10 rounded-lg">Decline</button>
@@ -467,7 +488,7 @@ function DashboardContent() {
                     <button onClick={handleCreateEventClick} className="bg-black text-white px-6 py-2 rounded-lg font-bold">{isCreating ? 'Cancel' : '+ Add Event'}</button>
                   </div>
                   
-                  {isCreating && (<div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-8"><h2 className="text-xl font-bold mb-4">1. Create New Event Container</h2><form onSubmit={handleCreateEvent} className="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="text" placeholder="Event Name" className="p-3 border rounded-lg" value={title} onChange={e => setTitle(e.target.value)} required /><input type="text" placeholder="Location" className="p-3 border rounded-lg" value={location} onChange={e => setLocation(e.target.value)} required /><div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Event Date</label><input type="date" className="p-3 border rounded-lg" value={date} onChange={e => setDate(e.target.value)} required /></div><div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Visibility</label><select value={visibility} onChange={(e) => setVisibility(e.target.value)} className="p-3 border rounded-lg bg-white font-bold"><option value="public">🌍 Public</option><option value="private">🔒 Private</option></select></div><input type="number" placeholder="Total Labor Budget" className="md:col-span-2 p-3 border rounded-lg" value={budget} onChange={e => setBudget(e.target.value)} required /><button type="submit" className="md:col-span-2 bg-secondary text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition-colors">Create Event & Start Staffing →</button></form></div>)}
+                  {isCreating && (<div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-8"><h2 className="text-xl font-bold mb-4">Create New Event</h2><form onSubmit={handleCreateEvent} className="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="text" placeholder="Event Name" className="p-3 border rounded-lg" value={title} onChange={e => setTitle(e.target.value)} required /><input type="text" placeholder="Location" className="p-3 border rounded-lg" value={location} onChange={e => setLocation(e.target.value)} required /><div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Event Date</label><input type="date" className="p-3 border rounded-lg" value={date} onChange={e => setDate(e.target.value)} required /></div><div className="flex flex-col"><label className="text-xs font-bold text-slate-400 uppercase ml-1 mb-1">Visibility</label><select value={visibility} onChange={(e) => setVisibility(e.target.value)} className="p-3 border rounded-lg bg-white font-bold"><option value="public">🌍 Public</option><option value="private">🔒 Private</option></select></div><input type="number" placeholder="Total Labor Budget" className="md:col-span-2 p-3 border rounded-lg" value={budget} onChange={e => setBudget(e.target.value)} required /><button type="submit" className="md:col-span-2 bg-secondary text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition-colors">Create Event & Start Staffing →</button></form></div>)}
                   
                   <div className="grid gap-6">
                     {events.map(event => (
@@ -476,7 +497,7 @@ function DashboardContent() {
                           <div className="flex justify-between items-start">
                             <div>
                               <h3 className="text-xl font-bold text-gray-900 group-hover:text-primary transition-colors">{event.title} &rarr;</h3>
-                              <p className="text-sm text-gray-500 mt-1">📍 {event.location} • 📅 {event.event_date ? new Date(event.event_date).toLocaleDateString() : 'No date set'}</p>
+                              <p className="text-sm text-gray-500 mt-1">📍 {event.location} 📅 {event.event_date ? new Date(event.event_date).toLocaleDateString() : 'No date set'}</p>
                             </div>
                             <div className="text-right">
                               <span className="text-xl font-bold text-green-700">${event.budget}</span>
