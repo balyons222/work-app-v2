@@ -5,6 +5,7 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+import { getPlanLimits } from '@/src/config/subscriptions' // <-- NEW IMPORT
 
 export default function EditProfilePage() {
   const [user, setUser] = useState<any>(null)
@@ -20,6 +21,9 @@ export default function EditProfilePage() {
   const [certs, setCerts] = useState('')
   const [bio, setBio] = useState('')
   const [keywords, setKeywords] = useState('')
+  
+  // NEW: Subscription State
+  const [planTier, setPlanTier] = useState('free')
   
   // File State
   const [headshot, setHeadshot] = useState<File | null>(null)
@@ -59,6 +63,9 @@ export default function EditProfilePage() {
       setCerts(profile.certifications || '')
       setBio(profile.bio || '')
       setKeywords(profile.keywords || '')
+      
+      // Load their plan tier (defaults to 'free' if null)
+      setPlanTier(profile.plan_tier || 'free')
     }
     
     setLoading(false)
@@ -96,7 +103,13 @@ export default function EditProfilePage() {
 
       // 2. Upload Portfolio Images if selected
       if (portfolioFiles && portfolioFiles.length > 0) {
-        if (portfolioFiles.length > 10) throw new Error("Maximum 10 portfolio images allowed.")
+        
+        // CHECK THE LIMITS BEFORE UPLOADING
+        const limits = getPlanLimits(planTier)
+        if (portfolioFiles.length > limits.maxImages) {
+          throw new Error(`Your ${planTier} plan allows a maximum of ${limits.maxImages} images.`)
+        }
+
         toast.loading(`Uploading ${portfolioFiles.length} portfolio images...`, { id: loadingToast })
         
         for (let i = 0; i < portfolioFiles.length; i++) {
@@ -136,6 +149,9 @@ export default function EditProfilePage() {
       setSaving(false)
     }
   }
+
+  // Get current limits for the UI display
+  const currentLimits = getPlanLimits(planTier)
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full"></div></div>
 
@@ -193,10 +209,46 @@ export default function EditProfilePage() {
             <textarea value={bio} onChange={e => setBio(e.target.value)} rows={4} className="w-full px-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
           </div>
 
-          {/* Portfolio Images */}
+          {/* DYNAMIC Portfolio Images Section */}
           <div className="border-t pt-6">
-            <label className="block text-sm font-bold text-slate-700 mb-2">Work Portfolio (Max 10 images)</label>
-            <input type="file" multiple accept="image/*" onChange={(e) => setPortfolioFiles(e.target.files)} className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200" />
+            <div className="flex justify-between items-end mb-2">
+              <label className="block text-sm font-bold text-slate-700">
+                Work Portfolio
+              </label>
+              <span className="text-xs font-bold bg-indigo-100 text-indigo-800 px-2 py-1 rounded capitalize">
+                {planTier} Plan: {currentLimits.maxImages} Images Max
+              </span>
+            </div>
+            
+            <input 
+              type="file" 
+              multiple 
+              accept="image/*" 
+              onChange={(e) => {
+                const files = e.target.files
+                if (files && files.length > currentLimits.maxImages) {
+                  toast.error(`Your plan allows up to ${currentLimits.maxImages} images.`)
+                  e.target.value = '' // Reset input
+                  setPortfolioFiles(null)
+                } else {
+                  setPortfolioFiles(files)
+                }
+              }} 
+              className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200" 
+            />
+
+            {/* Upsell for Free Users */}
+            {planTier === 'free' && (
+              <div className="mt-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-amber-900 font-bold">Want to show more of your work?</p>
+                  <p className="text-xs text-amber-700 mt-1">Upgrade to Premium to upload up to 10 portfolio images.</p>
+                </div>
+                <Link href="/pricing" className="text-sm bg-amber-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-amber-600 transition shadow-sm whitespace-nowrap ml-4">
+                  Upgrade
+                </Link>
+              </div>
+            )}
           </div>
 
           <button type="submit" disabled={saving} className="w-full bg-indigo-900 text-white py-3 rounded-xl font-bold mt-4 hover:bg-indigo-800 transition disabled:opacity-50">
