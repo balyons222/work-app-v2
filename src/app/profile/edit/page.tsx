@@ -5,7 +5,8 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-import { getPlanLimits } from '@/src/config/subscriptions' // <-- NEW IMPORT
+import { getPlanLimits } from '@/src/config/subscriptions'
+import { ROLE_CATEGORIES } from '@/src/config/roles'
 
 export default function EditProfilePage() {
   const [user, setUser] = useState<any>(null)
@@ -17,7 +18,7 @@ export default function EditProfilePage() {
   const [location, setLocation] = useState('')
   const [experience, setExperience] = useState('')
   const [willTravel, setWillTravel] = useState(false)
-  const [skills, setSkills] = useState('')
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([])
   const [certs, setCerts] = useState('')
   const [bio, setBio] = useState('')
   const [keywords, setKeywords] = useState('')
@@ -59,7 +60,7 @@ export default function EditProfilePage() {
       setLocation(profile.location || '')
       setExperience(profile.years_experience?.toString() || '')
       setWillTravel(profile.will_travel || false)
-      setSkills(profile.skills || '')
+     setSelectedRoles(profile.skills ? profile.skills.split(',').map((s: string) => s.trim()) : [])
       setCerts(profile.certifications || '')
       setBio(profile.bio || '')
       setKeywords(profile.keywords || '')
@@ -126,7 +127,7 @@ export default function EditProfilePage() {
         location,
         years_experience: parseInt(experience) || 0,
         will_travel: willTravel,
-        skills,
+        skills: selectedRoles.join(', '),
         certifications: certs,
         bio,
         keywords,
@@ -194,9 +195,42 @@ export default function EditProfilePage() {
             </div>
           </div>
 
+          {/* Categorized Roles / Skills */}
           <div>
-            <label className="block text-sm font-bold mb-1 text-slate-700">Skills (Comma separated)</label>
-            <input type="text" value={skills} onChange={e => setSkills(e.target.value)} placeholder="Bartending, VIP Hosting..." className="w-full px-4 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" />
+            <label className="block text-sm font-black mb-4 text-slate-900 text-lg">Roles You Work</label>
+            
+            {Object.entries(ROLE_CATEGORIES).map(([category, roles]) => (
+              <div key={category} className="mb-6 border-b border-slate-100 pb-6 last:border-0 last:pb-0">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">{category}</h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {roles.map((role) => (
+                    <label 
+                      key={role} 
+                      className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
+                        selectedRoles.includes(role) 
+                          ? 'bg-indigo-50 border-indigo-200 text-indigo-900' 
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                        checked={selectedRoles.includes(role)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedRoles([...selectedRoles, role])
+                          } else {
+                            setSelectedRoles(selectedRoles.filter(r => r !== role))
+                          }
+                        }}
+                      />
+                      <span className="text-sm font-bold">{role}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
 
           <div>

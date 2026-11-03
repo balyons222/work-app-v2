@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@/src/utils/supabase/server'
 
-// Initialize Stripe with your secret key (you will add this to your .env file)
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: '2024-06-20', 
 })
@@ -19,10 +18,16 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { priceId } = body
 
-    // Generate the secure Stripe Checkout URL
-    const session = await stripe.checkout.sessions.create({
+    // 1. Check if the user already has a Stripe Customer ID in your database
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('stripe_customer_id')
+      .eq('id', user.id)
+      .single()
+
+    // 2. Build the base session configuration
+    const sessionConfig: Stripe.Checkout.SessionCreateParams = {
       payment_method_types: ['card'],
-      customer_email: user.email,
       line_items: [
         {
           price: priceId,
@@ -30,17 +35,21 @@ export async function POST(req: Request) {
         },
       ],
       mode: 'subscription',
-      
-      // THIS IS THE MAGIC LINE: Tells Stripe to show the Coupon Code field
       allow_promotion_codes: true, 
-      
-      // Where to send the user after they pay (or cancel)
       success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/dashboard?checkout=success`,
       cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/pricing`,
-      
-      // Attach the user's Supabase ID to the Stripe session so our webhook knows who paid
       client_reference_id: user.id,
-    })
+    }
+
+    // 3. Conditionally add either the Customer ID or the Email
+    if (profile?.stripe_customer_id) {
+      sessionConfig.customer = profile.stripe_customer_id
+    } else {
+      sessionConfig.customer_email = user.email
+    }
+
+    // 4. Generate the secure Stripe Checkout URL
+    const session = await stripe.checkout.sessions.create(sessionConfig)
 
     return NextResponse.json({ url: session.url })
 
