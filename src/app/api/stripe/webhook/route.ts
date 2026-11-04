@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 
 // 1. Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: '2024-06-20',
+  apiVersion: '2026-02-25.clover',
 })
 
 // 2. Initialize Supabase Admin (Bypasses Row Level Security for server-to-server updates)
