@@ -115,7 +115,6 @@ function DashboardContent() {
           `)
           .eq('invitee_id', user.id)
         
-        // Manual filter to avoid database status casing issues
         const activeInvites = (invitesData || []).filter(i => (i.status || '').toLowerCase() === 'pending')
         setInvites(activeInvites)
         
@@ -144,6 +143,22 @@ function DashboardContent() {
   }
 
   // HANDLERS
+  const handleManageSubscription = async () => {
+    const toastId = toast.loading('Opening billing portal...')
+    try {
+      const response = await fetch('/api/stripe/portal', { method: 'POST' })
+      const data = await response.json()
+      
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        throw new Error('Could not load portal')
+      }
+    } catch (error) {
+      toast.error('Billing portal not available. Try upgrading first!', { id: toastId })
+    }
+  }
+
   const handleOpenChat = async (jobId: string, applicationId: string, otherUserId: string, otherName: string) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -187,36 +202,23 @@ function DashboardContent() {
     if (!newDateStr) return; 
 
     try {
-      const { data: originalEvent, error: fetchErr } = await supabase
-        .from('events')
-        .select('*, jobs(*)')
-        .eq('id', originalEventId)
-        .single();
-
+      const { data: originalEvent, error: fetchErr } = await supabase.from('events').select('*, jobs(*)').eq('id', originalEventId).single();
       if (fetchErr || !originalEvent) throw new Error("Could not fetch original event.");
 
       const { jobs, id, created_at, ...eventData } = originalEvent;
       
-      const { data: newEvent, error: insertEventErr } = await supabase
-        .from('events')
-        .insert({
+      const { data: newEvent, error: insertEventErr } = await supabase.from('events').insert({
           ...eventData,
           title: `${eventData.title} (Copy)`,
           event_date: newDateStr
-        })
-        .select()
-        .single();
+        }).select().single();
 
       if (insertEventErr || !newEvent) throw new Error("Failed to duplicate the event.");
 
       if (jobs && jobs.length > 0) {
         const jobsToInsert = jobs.map((job: any) => {
           const { id, created_at, event_id, ...jobData } = job;
-          return {
-            ...jobData,
-            event_id: newEvent.id, 
-            status: 'open'         
-          };
+          return { ...jobData, event_id: newEvent.id, status: 'open' };
         });
 
         const { error: jobsErr } = await supabase.from('jobs').insert(jobsToInsert);
@@ -235,7 +237,6 @@ function DashboardContent() {
     }
   }
 
-  // --- NEW: Handle copying referral code ---
   const handleCopyCode = () => {
     if (profile?.referral_code) {
       navigator.clipboard.writeText(profile.referral_code)
@@ -243,7 +244,6 @@ function DashboardContent() {
     }
   }
 
-  // Helper for safe status checks
   const normalize = (s: string) => s?.toLowerCase().trim() || ''
   const bookedJobs = myApps.filter(a => normalize(a.status) === 'approved' && normalize(a.payment_status) !== 'paid')
   const pendingJobs = myApps.filter(a => normalize(a.status) === 'pending')
@@ -263,6 +263,7 @@ function DashboardContent() {
           <button onClick={() => setActiveTab('reports')} className={`pb-4 text-sm font-bold border-b-2 ${activeTab === 'reports' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>Reports & Analytics</button>
         </div>
 
+        {/* Get Paid Banner */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8">
           <div className="flex justify-between items-center">
             <div>
@@ -273,22 +274,30 @@ function DashboardContent() {
           </div>
         </div>
 
-       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
+        {/* SINGLE CLEAN PROFILE HEADER */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
+          
           <div className="flex items-center gap-4">
-            <div className="h-16 w-16 bg-primary rounded-full overflow-hidden flex items-center justify-center text-white text-2xl font-bold border border-slate-200 relative">
+            <div className="h-16 w-16 bg-indigo-900 rounded-full overflow-hidden flex items-center justify-center text-white text-2xl font-bold border border-slate-200 relative">
               {profile?.avatar_url ? (
-                <Image 
-                  src={profile.avatar_url} 
-                  alt="Profile" 
-                  fill
-                  className="object-cover"
-                />
+                <Image src={profile.avatar_url} alt="Profile" fill className="object-cover" />
               ) : (
                 profile?.full_name?.charAt(0) || 'U'
               )}
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 italic">Stay FxD, {profile?.full_name?.split(' ')[0] || 'Member'}</h1>
+              <div className="flex items-center gap-3 mb-1">
+                <h1 className="text-2xl font-bold text-gray-900 italic">Stay FxD, {profile?.full_name?.split(' ')[0] || 'Member'}</h1>
+                
+                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full ${
+                  profile?.plan_tier === 'premium' 
+                    ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-sm' 
+                    : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {profile?.plan_tier === 'premium' ? 'Pro Member' : 'Basic Plan'}
+                </span>
+              </div>
+              
               <p className="text-sm text-gray-500 capitalize">
                  {profile?.role} • {profile?.location || 'Location not set'}
               </p>
@@ -296,11 +305,27 @@ function DashboardContent() {
           </div>
           
           <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-            {/* Missing Rich Media Warning */}
+            
             {(!profile?.avatar_url || !profile?.portfolio_urls || profile?.portfolio_urls.length === 0) && (
-              <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-4 py-2 rounded-lg text-sm font-bold border border-amber-200">
+              <div className="flex items-center justify-center gap-2 text-amber-600 bg-amber-50 px-4 py-2 rounded-lg text-sm font-bold border border-amber-200">
                 ⚠️ Complete your portfolio to get more gigs
               </div>
+            )}
+            
+            {profile?.plan_tier === 'premium' ? (
+              <button 
+                onClick={handleManageSubscription}
+                className="w-full md:w-auto text-center px-6 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold hover:bg-indigo-100 transition-all border border-indigo-100"
+              >
+                Manage Billing
+              </button>
+            ) : (
+              <Link 
+                href="/pricing" 
+                className="w-full md:w-auto text-center px-6 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg font-bold hover:from-amber-600 hover:to-orange-600 transition-all shadow-sm"
+              >
+                Upgrade to Pro
+              </Link>
             )}
             
             <Link href="/profile/edit" className="w-full md:w-auto text-center px-6 py-2 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-all text-slate-700">
@@ -315,7 +340,6 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* --- NEW: REFERRAL CODE CARD --- */}
         {profile?.referral_code && (
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-8 max-w-sm">
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
@@ -325,10 +349,7 @@ function DashboardContent() {
               <span className="text-2xl font-black text-slate-800 tracking-widest">
                 {profile.referral_code}
               </span>
-              <button 
-                onClick={handleCopyCode}
-                className="text-secondary text-sm font-bold hover:text-teal-700 transition-colors"
-              >
+              <button onClick={handleCopyCode} className="text-secondary text-sm font-bold hover:text-teal-700 transition-colors">
                 Copy
               </button>
             </div>
@@ -357,7 +378,6 @@ function DashboardContent() {
              ) : (
                  <div className="space-y-10">
                     
-                    {/* INVITES SECTION */}
                     <section>
                       <h2 className="text-xl font-black mb-4 flex items-center gap-2">🎟️ Job Invitations <span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded-full">{invites.length}</span></h2>
                       {invites.length === 0 ? (
@@ -395,7 +415,6 @@ function DashboardContent() {
                       )}
                     </section>
 
-                    {/* UPCOMING SCHEDULE */}
                     <section>
                        <h2 className="text-xl font-black text-primary mb-4 flex items-center gap-2">📅 Upcoming Schedule <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">{bookedJobs.length}</span></h2>
                        {bookedJobs.length === 0 ? (
@@ -420,7 +439,6 @@ function DashboardContent() {
                        )}
                     </section>
                     
-                    {/* PAST JOBS */}
                     <section>
                         <h2 className="text-xl font-black text-primary mb-4">✅ Job History</h2>
                         {pastJobs.length === 0 ? (
@@ -447,7 +465,6 @@ function DashboardContent() {
                         )}
                     </section>
 
-                    {/* PENDING APPLICATIONS */}
                     <section>
                        <h2 className="text-xl font-black text-primary mb-4 flex items-center gap-2">⏳ Pending Applications <span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded-full">{pendingJobs.length}</span></h2>
                        {pendingJobs.length === 0 ? (
@@ -505,7 +522,6 @@ function DashboardContent() {
                           </div>
                         </div>
                         
-                        {/* THE NEW DUPLICATE AND DELETE BUTTONS */}
                         <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleDuplicateEvent(event.id); }} 
