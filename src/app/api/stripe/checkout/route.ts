@@ -36,8 +36,8 @@ export async function POST(req: Request) {
       ],
       mode: 'subscription',
       allow_promotion_codes: true, 
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/dashboard?checkout=success`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/pricing`,
+      success_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/dashboard`,
       client_reference_id: user.id,
     }
 
