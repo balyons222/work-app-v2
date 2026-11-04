@@ -17,13 +17,21 @@ export default function JobPostForm() {
     const formData = new FormData(e.currentTarget)
     const { data: { user } } = await supabase.auth.getUser()
 
+    // NEW: Strict null check to satisfy TypeScript
+    if (!user) {
+      alert("You must be logged in to post a job.")
+      setLoading(false)
+      return
+    }
+
+    // NEW: Added explicit 'as string' to satisfy TypeScript's strict mode
     const jobData = {
-      role: formData.get('role'), // Captured from the new dropdown
-      title: formData.get('title'),
-      description: formData.get('description'),
-      location: formData.get('location'),
-      budget: parseFloat(formData.get('budget') as string), // Ensure it saves as a number
-      organizer_id: user?.id, // Corrected to match your dashboard schema
+      role: formData.get('role') as string,
+      title: formData.get('title') as string,
+      description: formData.get('description') as string,
+      location: formData.get('location') as string,
+      budget: parseFloat(formData.get('budget') as string) || 0, 
+      organizer_id: user.id, 
     }
 
     const { error } = await supabase
@@ -47,7 +55,6 @@ export default function JobPostForm() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           
-          {/* NEW: The Standardized Role Dropdown */}
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2">Job Role</label>
             <select 
