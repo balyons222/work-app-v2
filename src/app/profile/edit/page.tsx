@@ -60,7 +60,13 @@ export default function EditProfilePage() {
       setLocation(profile.location || '')
       setExperience(profile.years_experience?.toString() || '')
       setWillTravel(profile.will_travel || false)
-     setSelectedRoles(profile.skills ? profile.skills.split(',').map((s: string) => s.trim()) : [])
+     setSelectedRoles(
+  Array.isArray(profile.skills) 
+    ? profile.skills 
+    : typeof profile.skills === 'string' 
+      ? profile.skills.split(',').map((s: string) => s.trim()) 
+      : []
+)
       setCerts(profile.certifications || '')
       setBio(profile.bio || '')
       setKeywords(profile.keywords || '')
