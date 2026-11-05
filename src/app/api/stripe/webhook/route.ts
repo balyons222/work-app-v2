@@ -30,18 +30,21 @@ export async function POST(req: Request) {
     return new NextResponse(`Webhook Error: ${error.message}`, { status: 400 })
   }
 
-  // Handle the successful checkout event
+ // Handle the successful checkout event
   if (event.type === 'checkout.session.completed') {
+    console.log('🔔 1. WEBHOOK RECEIVED: checkout.session.completed')
     const session = event.data.object as Stripe.Checkout.Session
 
-    // Retrieve the user ID we passed during checkout
     const userId = session.client_reference_id
     const customerId = session.customer as string
     const subscriptionId = session.subscription as string
 
+    console.log('👤 2. USER ID FROM STRIPE:', userId)
+    console.log('💳 3. CUSTOMER ID:', customerId)
+
     if (userId) {
-      // Update the user's profile to premium
-      const { error } = await supabaseAdmin
+      console.log('🗄️ 4. ATTEMPTING SUPABASE UPDATE...')
+      const { data, error } = await supabaseAdmin
         .from('profiles')
         .update({
           plan_tier: 'premium',
@@ -49,11 +52,16 @@ export async function POST(req: Request) {
           stripe_subscription_id: subscriptionId,
         })
         .eq('id', userId)
+        .select() // Forces Supabase to return the updated row
 
       if (error) {
-        console.error('Error updating user subscription:', error)
+        console.error('❌ 5. SUPABASE ERROR:', error)
         return new NextResponse('Database Update Error', { status: 500 })
       }
+      
+      console.log('✅ 6. SUPABASE UPDATE SUCCESS! Rows affected:', data?.length)
+    } else {
+      console.log('⚠️ 4. NO USER ID FOUND - SKIPPING DATABASE UPDATE')
     }
   }
 
