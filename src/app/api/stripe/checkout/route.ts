@@ -49,6 +49,7 @@ export async function POST(req: Request) {
     }
 
     // 4. Generate the secure Stripe Checkout URL
+    console.log("🔑 ACTUAL STRIPE KEY:", process.env.STRIPE_SECRET_KEY?.substring(0, 14) + "...");
     const session = await stripe.checkout.sessions.create(sessionConfig)
 
     return NextResponse.json({ url: session.url })
