@@ -16,7 +16,8 @@ export async function POST(req: Request) {
     const { applicationId } = await req.json()
 
     // 1. Fetch application, job rate, and contractor's Stripe ID
-    const { data: application, error } = await supabase
+    // ✅ FIX 1: Added 'id' to the jobs select string
+    const { data, error } = await supabase
       .from('applications')
       .select(`
         id, 
@@ -24,19 +25,26 @@ export async function POST(req: Request) {
         status,
         payment_status,
         profiles:applicant_id ( stripe_account_id, payouts_enabled ),
-        jobs ( rate, rate_type, estimated_hours )
+        jobs ( id, rate, rate_type, estimated_hours )
       `)
       .eq('id', applicationId)
       .single()
 
-    if (error || !application) throw new Error('Application not found')
+    if (error || !data) throw new Error('Application not found')
+
+    // ✅ FIX 2: Cast to 'any' to resolve TypeScript errors on joined tables
+    const application = data as any
+
+    // ✅ FIX 3: Safely handle if Supabase returns arrays for joined tables
+    const profile = Array.isArray(application.profiles) ? application.profiles[0] : application.profiles
+    const job = Array.isArray(application.jobs) ? application.jobs[0] : application.jobs
+
     if (application.payment_status === 'paid') throw new Error('Already paid')
-    if (!application.profiles?.stripe_account_id || !application.profiles?.payouts_enabled) {
+    if (!profile?.stripe_account_id || !profile?.payouts_enabled) {
       throw new Error('Contractor has not connected their bank account yet.')
     }
 
     // 2. Calculate final payout amount (Stripe expects cents)
-    const job = application.jobs
     const totalAmount = job.rate_type === 'hourly' 
       ? (job.rate * (job.estimated_hours || 0)) 
       : job.rate
@@ -46,7 +54,7 @@ export async function POST(req: Request) {
     const transfer = await stripe.transfers.create({
       amount: amountInCents,
       currency: 'usd',
-      destination: application.profiles.stripe_account_id,
+      destination: profile.stripe_account_id,
       description: `Payout for Job ID: ${job.id}`,
     })
 
