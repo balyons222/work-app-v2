@@ -85,5 +85,26 @@ export async function POST(req: Request) {
       .eq('stripe_customer_id', subscription.customer as string)
   }
 
+  // ✅ PASTE THE NEW CONNECT ACCOUNT BLOCK HERE:
+  if (event.type === 'account.updated') {
+    const account = event.data.object as Stripe.Account
+    const payoutsEnabled = account.payouts_enabled
+
+    console.log('🏦 WEBHOOK RECEIVED: account.updated')
+
+    // Update the profile based on the connected account's status
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update({ payouts_enabled: payoutsEnabled })
+      .eq('stripe_account_id', account.id)
+
+    if (error) {
+      console.error('🚨 Error updating connect account status:', error)
+      return new NextResponse('Database Error', { status: 500 })
+    }
+
+    console.log(`🏦 Connect Account ${account.id} payouts_enabled set to: ${payoutsEnabled}`)
+  }
+
   return new NextResponse('Webhook processed successfully', { status: 200 })
 }
