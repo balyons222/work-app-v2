@@ -244,11 +244,23 @@ const handleOpenChat = async (jobId: string, applicationId: string, workerId: st
     } else toast.error('Update failed')
   }
 
-  const handleMarkPaid = async (appId: string) => {
-    const method = prompt('How did you pay them? (e.g. Venmo, Check #123, Cash)')
-    if (!method) return
-    const { error } = await supabase.from('applications').update({ payment_status: 'paid', payment_method: method }).eq('id', appId)
-    if (!error) { toast.success('Marked as Paid'); loadEventData(); }
+const handleMarkPaid = async (appId: string) => {
+    const toastId = toast.loading('Processing payout via Stripe...')
+    try {
+      const res = await fetch('/api/stripe/payout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ applicationId: appId })
+      })
+      const data = await res.json()
+      
+      if (!res.ok) throw new Error(data.error)
+      
+      toast.success('Funds successfully transferred!', { id: toastId })
+      loadEventData()
+    } catch (error: any) {
+      toast.error(error.message, { id: toastId })
+    }
   }
 
   const handleDeleteJob = async (jobId: string) => {
