@@ -23,7 +23,7 @@ export default function EditProfilePage() {
   const [bio, setBio] = useState('')
   const [keywords, setKeywords] = useState('')
   
-  // NEW: Subscription State
+  // Subscription State
   const [planTier, setPlanTier] = useState('free')
   
   // File State
@@ -48,7 +48,6 @@ export default function EditProfilePage() {
 
     setUser(user)
 
-    // Fetch existing profile data to pre-fill the form
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
@@ -60,18 +59,16 @@ export default function EditProfilePage() {
       setLocation(profile.location || '')
       setExperience(profile.years_experience?.toString() || '')
       setWillTravel(profile.will_travel || false)
-     setSelectedRoles(
-  Array.isArray(profile.skills) 
-    ? profile.skills 
-    : typeof profile.skills === 'string' 
-      ? profile.skills.split(',').map((s: string) => s.trim()) 
-      : []
-)
+      setSelectedRoles(
+        Array.isArray(profile.skills) 
+          ? profile.skills 
+          : typeof profile.skills === 'string' 
+            ? profile.skills.split(',').map((s: string) => s.trim()) 
+            : []
+      )
       setCerts(profile.certifications || '')
       setBio(profile.bio || '')
       setKeywords(profile.keywords || '')
-      
-      // Load their plan tier (defaults to 'free' if null)
       setPlanTier(profile.plan_tier || 'free')
     }
     
@@ -102,16 +99,14 @@ export default function EditProfilePage() {
       let avatarUrl = undefined
       let portfolioUrls = []
 
-      // 1. Upload Headshot if selected
+      // 1. Upload Headshot
       if (headshot) {
         toast.loading("Uploading headshot...", { id: loadingToast })
         avatarUrl = await uploadFile(headshot, user.id, 'avatar')
       }
 
-      // 2. Upload Portfolio Images if selected
+      // 2. Upload Portfolio Images
       if (portfolioFiles && portfolioFiles.length > 0) {
-        
-        // CHECK THE LIMITS BEFORE UPLOADING
         const limits = getPlanLimits(planTier)
         if (portfolioFiles.length > limits.maxImages) {
           throw new Error(`Your ${planTier} plan allows a maximum of ${limits.maxImages} images.`)
@@ -133,7 +128,8 @@ export default function EditProfilePage() {
         location,
         years_experience: parseInt(experience) || 0,
         will_travel: willTravel,
-        skills: selectedRoles.join(', '),
+        // ✅ FIX: Send array directly so Postgres text[] column accepts it
+        skills: selectedRoles, 
         certifications: certs,
         bio,
         keywords,
@@ -144,18 +140,22 @@ export default function EditProfilePage() {
       if (portfolioUrls.length > 0) updates.portfolio_urls = portfolioUrls
 
       const { error } = await supabase.from('profiles').upsert(updates)
-      if (error) throw error
+      
+      if (error) {
+        console.error("🚨 Supabase Raw Error:", JSON.stringify(error, null, 2))
+        throw new Error(error.message || "Database update failed")
+      }
 
       toast.success("Profile saved successfully!", { id: loadingToast })
       router.push('/dashboard')
 
     } catch (error: any) {
-      console.error(error)
+      console.error("Caught Error:", error)
       toast.error(error.message || "Failed to save profile", { id: loadingToast })
     } finally {
       setSaving(false)
     }
-  }
+  } // ✅ FIX: Missing closing bracket restored
 
   // Get current limits for the UI display
   const currentLimits = getPlanLimits(planTier)
