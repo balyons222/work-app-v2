@@ -104,7 +104,6 @@ function DashboardContent() {
       const userRole = profileData?.role?.toLowerCase() || ''
       if (userRole.includes('contractor') || userRole.includes('worker')) {
         
-        // 1. FETCH INVITES 
         const { data: invitesData } = await supabase
           .from('event_invitations')
           .select(`
@@ -118,7 +117,6 @@ function DashboardContent() {
         const activeInvites = (invitesData || []).filter(i => (i.status || '').toLowerCase() === 'pending')
         setInvites(activeInvites)
         
-        // 2. FETCH APPLICATIONS (JOBS)
         const { data: appsData } = await supabase
           .from('applications')
           .select(`
@@ -142,7 +140,6 @@ function DashboardContent() {
     }
   }
 
-  // HANDLERS
   const handleManageSubscription = async () => {
     const toastId = toast.loading('Opening billing portal...')
     try {
@@ -289,17 +286,21 @@ function DashboardContent() {
               <div className="flex items-center gap-3 mb-1">
                 <h1 className="text-2xl font-bold text-gray-900 italic">Stay FxD, {profile?.full_name?.split(' ')[0] || 'Member'}</h1>
                 
-                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full ${
-                  profile?.plan_tier === 'premium' 
-                    ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-sm' 
-                    : 'bg-slate-100 text-slate-500'
+                {/* 1. DYNAMIC TIER BADGE */}
+                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full shadow-sm ${
+                  profile?.plan_tier === 'contractor' ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white' :
+                  profile?.plan_tier === 'organizer' ? 'bg-emerald-500 text-white' :
+                  'bg-slate-100 text-slate-500' // Basic fallback
                 }`}>
-                  {profile?.plan_tier === 'premium' ? 'Pro Member' : 'Basic Plan'}
+                  {profile?.plan_tier === 'contractor' ? 'PRO MEMBER' : 
+                   profile?.plan_tier === 'organizer' ? 'PRO HUB' : 
+                   'BASIC PLAN'}
                 </span>
+
               </div>
               
               <p className="text-sm text-gray-500 capitalize">
-                 {profile?.role} • {profile?.location || 'Location not set'}
+                {profile?.role} {profile?.location ? `• ${profile.location}` : '• Location not set'}
               </p>
             </div>
           </div>
@@ -312,7 +313,8 @@ function DashboardContent() {
               </div>
             )}
             
-            {profile?.plan_tier === 'premium' ? (
+            {/* 2. DYNAMIC BUTTON GATING */}
+            {['contractor', 'organizer'].includes(profile?.plan_tier) ? (
               <button 
                 onClick={handleManageSubscription}
                 className="w-full md:w-auto text-center px-6 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold hover:bg-indigo-100 transition-all border border-indigo-100"
