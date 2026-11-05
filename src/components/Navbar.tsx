@@ -110,7 +110,7 @@ export default function Navbar() {
                     <p className={`text-xs font-black uppercase tracking-tighter ${textColor}`}>
                       {profile?.full_name || 'Member'}
                     </p>
-                    <Link href="/setup-profile" className="text-[10px] text-secondary font-bold hover:underline">
+                    <Link href="/profile/edit" className="text-[10px] text-secondary font-bold hover:underline">
                       Edit Profile
                     </Link>
                   </div>
@@ -170,7 +170,7 @@ export default function Navbar() {
                    </div>
                    <div>
                       <p className="text-sm font-bold text-slate-900">{profile?.full_name || 'Member'}</p>
-                      <Link href="/setup-profile" onClick={() => setIsMobileMenuOpen(false)} className="text-xs text-secondary font-bold">Edit Profile</Link>
+                      <Link href="/profile/edit" onClick={() => setIsMobileMenuOpen(false)} className="text-xs text-secondary font-bold">Edit Profile</Link>
                    </div>
                 </div>
 
