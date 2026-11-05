@@ -48,7 +48,7 @@ const handleUpgrade = async () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // We will replace this with your actual Stripe Price ID later
-        body: JSON.stringify({ priceId: 'prod_VYxxU8CpYeorjW' }), 
+        body: JSON.stringify({ priceId: 'prod_VZMmYS0pbXyrcH' }), 
       })
 
       const data = await response.json()
