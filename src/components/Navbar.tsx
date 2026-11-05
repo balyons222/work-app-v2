@@ -100,7 +100,7 @@ export default function Navbar() {
                 <Link href="/search" className={`${textColor} font-bold hover:text-secondary transition-colors`}>Find Talent</Link>
                 <Link href="/events" className={`${textColor} font-bold hover:text-secondary transition-colors`}>Events</Link>
                 <Link href="/jobs" className={`${textColor} font-bold hover:text-secondary transition-colors`}>Find Work</Link>
-                
+                <Link href="/dashboard/payouts" className={`${textColor} font-bold hover:text-secondary transition-colors`}>Payouts</Link>
                 <div className="flex items-center gap-4 pl-6 border-l border-slate-200">
                   
                   {/* ✅ BELL ICON (Desktop) */}
@@ -178,7 +178,7 @@ export default function Navbar() {
                 <Link href="/search" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-4 rounded-md text-base font-bold text-slate-700 hover:text-primary hover:bg-slate-50">Find Talent</Link>
                 <Link href="/events" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-4 rounded-md text-base font-bold text-slate-700 hover:text-primary hover:bg-slate-50">Events</Link>
                 <Link href="/jobs" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-4 rounded-md text-base font-bold text-slate-700 hover:text-primary hover:bg-slate-50">Find Work</Link>
-                
+                <Link href="/dashboard/payouts" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-4 rounded-md text-base font-bold text-slate-700 hover:text-primary hover:bg-slate-50">Payouts</Link>
                 <button 
                   onClick={handleSignOut}
                   className="w-full text-left block px-3 py-4 rounded-md text-base font-bold text-red-500 hover:bg-red-50"
