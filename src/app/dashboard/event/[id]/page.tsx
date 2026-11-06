@@ -2,14 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/src/utils/supabase/client'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { sendNotification } from '@/src/utils/notifications'
 import InviteTalentModal from '@/src/components/InviteTalentModal' 
 import ChatWindow from '@/src/components/ChatWindow' 
 
-// 🛠️ SHARED ROLES
 const ROLE_CATEGORIES = {
   "Operations": ["General Event Support", "Site Lead", "Site Manager", "Finish Line Lead", "Start Line Lead", "Course Lead", "Vendor Manager", "Project Manager", "Equipment Operator", "Forklift Operator", "Truck Driver (nonCDL)", "Truck Driver (CDL)", "Electrician/Power", "Volunteer Coordinator", "Expo Lead", "Expo Support", "Warehouse Coordinator"],
   "Technology": ["Timer (Mylaps)", "Timer (Chronotrack)", "Timer (Race Result)", "Registration Support (Run Signup)", "Registration Support (Race Roster)", "Registration Support (Haku)", "Sound/Audio"],
@@ -48,16 +47,24 @@ export default function EventManagerPage() {
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState('')
 
-  // ✅ CHAT STATE
+  // CHAT STATE
   const [activeChat, setActiveChat] = useState<{ id: string, name: string } | null>(null)
 
   const supabase = createClient()
   const params = useParams()
+  const searchParams = useSearchParams()
   const router = useRouter()
   const eventId = params?.id as string
 
   useEffect(() => {
     loadEventData()
+    
+    // Check if returning from a successful Stripe Escrow payment
+    if (searchParams.get('funded') === 'true') {
+      toast.success('Payment received! Escrow funds are securely held.', { duration: 5000 })
+    } else if (searchParams.get('funded') === 'cancelled') {
+      toast.error('Escrow checkout was cancelled.')
+    }
   }, [eventId])
 
   async function loadEventData() {
@@ -86,12 +93,13 @@ export default function EventManagerPage() {
       visibility: eventData.visibility || 'public'
     })
 
+    // Added funding_status to the applications select query
     const { data: jobsData } = await supabase
       .from('jobs')
       .select(`
         *,
         applications (
-          id, status, applicant_id, payment_status, payment_method,
+          id, status, applicant_id, payment_status, payment_method, funding_status,
           profiles ( full_name, avatar_url, role )
         ),
         reviews (id, reviewee_id, rating) 
@@ -103,15 +111,14 @@ export default function EventManagerPage() {
     setLoading(false)
   }
 
-  // ✅ CHAT HANDLER
-const handleOpenChat = async (jobId: string, applicationId: string, workerId: string, workerName: string) => {
+  const handleOpenChat = async (jobId: string, applicationId: string, workerId: string, workerName: string) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
     const { data: existingChat } = await supabase
       .from('conversations')
       .select('id')
-      .eq('application_id', applicationId) // ✅ Match by unique Application ID
+      .eq('application_id', applicationId)
       .maybeSingle()
 
     if (existingChat) {
@@ -129,7 +136,7 @@ const handleOpenChat = async (jobId: string, applicationId: string, workerId: st
         .single()
 
       if (error) {
-         if (error.code === '23505') { // Handle unique constraint error
+         if (error.code === '23505') {
            const { data: retryChat } = await supabase.from('conversations').select('id').eq('application_id', applicationId).single()
            if (retryChat) setActiveChat({ id: retryChat.id, name: workerName })
          } else {
@@ -140,7 +147,7 @@ const handleOpenChat = async (jobId: string, applicationId: string, workerId: st
       }
     }
   }
-  // --- EVENT EDITING ---
+
   const handleEventChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setEventFormData({ ...eventFormData, [e.target.name]: e.target.value })
   }
@@ -171,7 +178,26 @@ const handleOpenChat = async (jobId: string, applicationId: string, workerId: st
     }
   }
 
-  // --- JOB MANAGEMENT ---
+  const handleHireAndFund = async (appId: string) => {
+    const toastId = toast.loading('Redirecting to Stripe checkout...')
+    try {
+      const res = await fetch('/api/stripe/fund-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ applicationId: appId })
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to start funding session')
+
+      if (data.url) {
+        window.location.href = data.url
+      }
+    } catch (err: any) {
+      toast.error(err.message, { id: toastId })
+    }
+  }
+
   const handleEditClick = (job: any) => {
     setEditingJobId(job.id)
     setSelectedRole(job.title)
@@ -227,25 +253,20 @@ const handleOpenChat = async (jobId: string, applicationId: string, workerId: st
     const { error } = await supabase.from('applications').update({ status: newStatus }).eq('id', appId)
     if (!error) {
       toast.success(`Applicant ${newStatus}`)
-      if (newStatus === 'approved') {
-        const { data: rawData } = await supabase.from('applications').select('applicant_id, jobs(title, events(title))').eq('id', appId).single()
-        if (rawData) {
-          const appData = rawData as any
-          await sendNotification({
-            userId: appData.applicant_id,
-            title: "You're Hired! 🎉",
-            message: `You have been booked for ${appData.jobs?.title} at ${appData.jobs?.events?.title}.`,
-            link: "/dashboard",
-            type: "success"
-          })
-        }
-      }
       loadEventData() 
-    } else toast.error('Update failed')
+    } else {
+      toast.error('Update failed')
+    }
   }
 
-const handleMarkPaid = async (appId: string) => {
-    const toastId = toast.loading('Processing payout via Stripe...')
+  // Safety confirmation + Escrow Release
+  const handleReleaseEscrow = async (appId: string) => {
+    const confirmed = window.confirm(
+      'Are you sure the contractor has completed this gig?\n\nThis will instantly transfer funds from escrow directly into their connected bank account.'
+    )
+    if (!confirmed) return
+
+    const toastId = toast.loading('Releasing escrow funds via Stripe...')
     try {
       const res = await fetch('/api/stripe/payout', {
         method: 'POST',
@@ -256,7 +277,7 @@ const handleMarkPaid = async (appId: string) => {
       
       if (!res.ok) throw new Error(data.error)
       
-      toast.success('Funds successfully transferred!', { id: toastId })
+      toast.success('Funds successfully released to contractor!', { id: toastId })
       loadEventData()
     } catch (error: any) {
       toast.error(error.message, { id: toastId })
@@ -264,12 +285,11 @@ const handleMarkPaid = async (appId: string) => {
   }
 
   const handleDeleteJob = async (jobId: string) => {
-    if (!confirm('Are you sure?')) return
+    if (!confirm('Are you sure you want to delete this job?')) return
     const { error } = await supabase.from('jobs').delete().eq('id', jobId)
     if (!error) { toast.success('Job removed'); loadEventData(); }
   }
 
-  // --- REVIEWS ---
   const openReviewModal = (app: any, job: any) => {
     setReviewTarget({ appId: app.id, userId: app.applicant_id, name: app.profiles?.full_name, jobId: job.id })
     setRating(5); setComment(''); setReviewModalOpen(true)
@@ -279,15 +299,16 @@ const handleMarkPaid = async (appId: string) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     const { error } = await supabase.from('reviews').insert({ reviewer_id: user.id, reviewee_id: reviewTarget.userId, job_id: reviewTarget.jobId, rating, comment })
-    if (error) toast.error(error.message)
-    else {
+    if (error) {
+      toast.error(error.message)
+    } else {
       toast.success('Review Submitted!')
       await sendNotification({ userId: reviewTarget.userId, title: "New Review! ⭐", message: `New review received!`, link: `/profile/${reviewTarget.userId}`, type: "success" })
       setReviewModalOpen(false); loadEventData()
     }
   }
 
-  if (loading) return <div className="p-20 text-center">Loading Event...</div>
+  if (loading) return <div className="p-20 text-center font-bold text-slate-400">Loading Event...</div>
 
   const totalBudget = event?.budget || 0
   const allocatedBudget = jobs.reduce((sum, job) => sum + (job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate), 0)
@@ -364,7 +385,6 @@ const handleMarkPaid = async (appId: string) => {
           <div className="bg-white p-8 rounded-2xl border mb-8 shadow-lg animate-in fade-in slide-in-from-top-4">
             <h3 className="text-lg font-bold mb-4">{editingJobId ? 'Edit Role' : 'Create New Role'}</h3>
             <form onSubmit={handleSaveJob} className="space-y-6">
-              {/* Role Selector */}
               <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="w-full p-3 bg-slate-50 border rounded-xl" required>
                 <option value="">Select a Role...</option>
                 {Object.entries(ROLE_CATEGORIES).map(([cat, roles]) => (
@@ -372,15 +392,13 @@ const handleMarkPaid = async (appId: string) => {
                 ))}
               </select>
               
-              {/* ✅ ADDED: Description Field */}
               <textarea 
                 value={jobDescription} 
                 onChange={(e) => setJobDescription(e.target.value)} 
-                placeholder="Job Description & Requirements (e.g. 'Must be able to lift 50lbs', 'Wear all black')" 
+                placeholder="Job Description & Requirements" 
                 className="w-full p-3 bg-slate-50 border rounded-xl h-24" 
               />
 
-              {/* ✅ ADDED: Date Pickers */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col">
                     <label className="text-xs font-bold text-slate-400 uppercase mb-1">Start Date</label>
@@ -392,7 +410,6 @@ const handleMarkPaid = async (appId: string) => {
                 </div>
               </div>
 
-              {/* Rate & Hours */}
               <div className="flex gap-4 items-end">
                 <div className="w-1/3">
                     <label className="text-xs font-bold text-slate-400 uppercase mb-1">Pay Type</label>
@@ -405,7 +422,6 @@ const handleMarkPaid = async (appId: string) => {
                     <label className="text-xs font-bold text-slate-400 uppercase mb-1">Rate ($)</label>
                     <input type="number" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="0.00" className="w-full p-3 border rounded-xl" required />
                 </div>
-                {/* ✅ ADDED: Estimated Hours Input (Conditional) */}
                 {rateType === 'hourly' && (
                     <div className="w-1/3 animate-in fade-in">
                         <label className="text-xs font-bold text-slate-400 uppercase mb-1">Est. Hours</label>
@@ -427,8 +443,9 @@ const handleMarkPaid = async (appId: string) => {
         {/* APPLICANT CARDS */}
         <div className="space-y-6">
           {jobs.map(job => {
-            // ✅ ADDED: Total Pay Calculation
-            const estimatedTotal = job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate;
+            const laborCost = job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate
+            const platformFee = laborCost * 0.10
+            const totalToFund = laborCost + platformFee
 
             return (
                 <div key={job.id} className="bg-white rounded-2xl border shadow-sm overflow-hidden">
@@ -436,7 +453,6 @@ const handleMarkPaid = async (appId: string) => {
                     <div>
                       <h3 className="text-xl font-black text-primary">{job.title}</h3>
                       <div className="flex items-center gap-4 mt-1 text-sm text-slate-600">
-                          {/* ✅ ADDED: Display Dates & Description */}
                           <span className="font-bold bg-white border px-2 py-0.5 rounded">
                             {job.start_date ? new Date(job.start_date).toLocaleDateString() : 'TBD'} 
                             {job.end_date && job.end_date !== job.start_date ? ` - ${new Date(job.end_date).toLocaleDateString()}` : ''}
@@ -444,7 +460,7 @@ const handleMarkPaid = async (appId: string) => {
                           <span className="text-slate-400">|</span>
                           <span className="font-bold text-green-600">
                             ${job.rate}/{job.rate_type === 'hourly' ? 'hr' : 'flat'}
-                            {job.rate_type === 'hourly' && <span className="text-slate-400 font-normal text-xs ml-1">(Est. Total: ${estimatedTotal})</span>}
+                            {job.rate_type === 'hourly' && <span className="text-slate-400 font-normal text-xs ml-1">(Est. Total: ${laborCost})</span>}
                           </span>
                       </div>
                       {job.description && <p className="text-xs text-slate-500 mt-2 max-w-xl">{job.description}</p>}
@@ -462,9 +478,9 @@ const handleMarkPaid = async (appId: string) => {
                         <p className="text-center text-sm text-slate-300 italic py-2">No applicants yet.</p>
                     ) : (
                         job.applications?.map((app: any) => (
-                          <div key={app.id} className="flex items-center justify-between p-4 bg-white border rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                          <div key={app.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-white border rounded-xl shadow-sm hover:shadow-md transition-shadow gap-4">
                             <div className="flex items-center gap-3">
-                              <div className="h-10 w-10 bg-slate-200 rounded-full overflow-hidden">
+                              <div className="h-10 w-10 bg-slate-200 rounded-full overflow-hidden shrink-0">
                                 {app.profiles?.avatar_url && <img src={app.profiles.avatar_url} className="object-cover h-full w-full" />}
                               </div>
                               <div>
@@ -475,25 +491,66 @@ const handleMarkPaid = async (appId: string) => {
                                 }`}>{app.status}</p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <button onClick={() => handleOpenChat(job.id, app.id, app.applicant_id, app.profiles?.full_name)} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">💬 Chat</button>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button onClick={() => handleOpenChat(job.id, app.id, app.applicant_id, app.profiles?.full_name)} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                                💬 Chat
+                              </button>
                               
+                              {/* 1. Pending: Offer Hire & Fund with Price Breakdown */}
                               {app.status === 'pending' && (
-                                <>
-                                  <button onClick={() => handleAppStatus(app.id, 'rejected')} className="px-3 py-1.5 text-xs font-bold text-red-500 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">Decline</button>
-                                  <button onClick={() => handleAppStatus(app.id, 'approved')} className="px-3 py-1.5 text-xs font-bold text-white bg-green-500 rounded-lg hover:bg-green-600 transition-colors shadow-sm">Hire</button>
-                                </>
+                                <div className="flex items-center gap-2">
+                                  <button 
+                                    onClick={() => handleAppStatus(app.id, 'rejected')} 
+                                    className="px-3 py-1.5 text-xs font-bold text-red-500 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                                  >
+                                    Decline
+                                  </button>
+                                  <button 
+                                    onClick={() => handleHireAndFund(app.id)} 
+                                    className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                                    title={`Labor: $${laborCost} + 10% Fee: $${platformFee}`}
+                                  >
+                                    Hire & Fund Escrow (${totalToFund.toFixed(2)})
+                                  </button>
+                                </div>
                               )}
                               
-                              {app.status === 'approved' && app.payment_status !== 'paid' && (
-                                  <button onClick={() => handleMarkPaid(app.id)} className="px-3 py-1.5 text-xs font-bold text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors">Mark Paid</button>
+                              {/* 2. Approved & Escrow Funded: Show Locked Badge & Release Button */}
+                              {app.status === 'approved' && app.funding_status === 'funded' && app.payment_status !== 'paid' && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
+                                    🔒 In Escrow
+                                  </span>
+                                  <button 
+                                    onClick={() => handleReleaseEscrow(app.id)} 
+                                    className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
+                                  >
+                                    Release Payout
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* 3. Approved but Unfunded Edge Case */}
+                              {app.status === 'approved' && app.funding_status !== 'funded' && app.payment_status !== 'paid' && (
+                                <button 
+                                  onClick={() => handleHireAndFund(app.id)} 
+                                  className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100"
+                                >
+                                  ⚠️ Fund Escrow (${totalToFund.toFixed(2)})
+                                </button>
                               )}
                               
+                              {/* 4. Complete & Paid */}
                               {app.payment_status === 'paid' && (
-                                  <div className="flex gap-2">
-                                      <span className="px-3 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 rounded-lg border border-slate-200">Paid</span>
-                                      <button onClick={() => openReviewModal(app, job)} className="px-3 py-1.5 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100">Rate</button>
-                                  </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="px-3 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 rounded-lg border border-slate-200">
+                                    ✓ Paid
+                                  </span>
+                                  <button onClick={() => openReviewModal(app, job)} className="px-3 py-1.5 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100">
+                                    Rate
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -529,7 +586,6 @@ const handleMarkPaid = async (appId: string) => {
         <InviteTalentModal eventId={eventId} jobId={inviteModalData.jobId} jobTitle={inviteModalData.jobTitle} onClose={() => setInviteModalData({ open: false })} />
       )}
 
-      {/* ✅ CORRECTED CHAT WINDOW LOGIC */}
       {activeChat && event && (
         <ChatWindow 
           conversationId={activeChat.id}
