@@ -67,7 +67,7 @@ export default function EventManagerPage() {
     }
   }, [eventId])
 
-  async function loadEventData() {
+ async function loadEventData() {
     const { data: eventData, error: eventError } = await supabase
       .from('events')
       .select('*')
@@ -93,8 +93,8 @@ export default function EventManagerPage() {
       visibility: eventData.visibility || 'public'
     })
 
-    // Added funding_status to the applications select query
-    const { data: jobsData } = await supabase
+    // Destructure jobsError so issues are clearly logged
+    const { data: jobsData, error: jobsError } = await supabase
       .from('jobs')
       .select(`
         *,
@@ -106,6 +106,11 @@ export default function EventManagerPage() {
       `)
       .eq('event_id', eventId)
       .order('created_at', { ascending: false })
+
+    if (jobsError) {
+      console.error('🚨 Error fetching jobs/roles:', jobsError)
+      toast.error('Could not load event roles: ' + jobsError.message)
+    }
 
     setJobs(jobsData || [])
     setLoading(false)

@@ -62,7 +62,7 @@ export async function POST(req: Request) {
     const platformFeeCents = Math.round(contractorGrossCents * PLATFORM_FEE_PERCENT)
 
     // 3. Create Stripe-hosted Checkout Session
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+   const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com'
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -98,8 +98,8 @@ export async function POST(req: Request) {
         contractor_id: app.applicant_id,
         type: 'job_escrow_funding',
       },
-      success_url: `${siteUrl}/event/${job.event_id}?funded=true`,
-      cancel_url: `${siteUrl}/event/${job.event_id}?funded=cancelled`,
+     success_url: `${origin}/dashboard/event/${job.event_id}?funded=true`,
+  cancel_url: `${origin}/dashboard/event/${job.event_id}?funded=cancelled`,
     })
 
     return NextResponse.json({ url: session.url })
