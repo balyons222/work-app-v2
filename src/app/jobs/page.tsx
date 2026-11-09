@@ -34,18 +34,19 @@ function JobBoardContent() {
     }
     setCurrentUser(user)
 
-    // 1. Fetch Open Jobs
-    const { data: jobsData, error } = await supabase
-      .from('jobs')
-      .select(`*, events ( title, location, event_date )`)
-      .eq('status', 'open')
-      .order('created_at', { ascending: false })
+// 1. Fetch Open Jobs (Strictly for Public Events)
+const { data: jobsData, error } = await supabase
+  .from('jobs')
+  .select(`*, events!inner ( title, location, event_date, visibility )`)
+  .eq('status', 'open')
+  .eq('events.visibility', 'public') // Crucial: Only show public events
+  .order('created_at', { ascending: false })
 
-    if (error) {
-        console.error('Error loading jobs:', error)
-    } else {
-        setJobs(jobsData || [])
-    }
+if (error) {
+    console.error('Error loading jobs:', error)
+} else {
+    setJobs(jobsData || [])
+}
 
     // 2. Fetch My Applications with STATUS
     const { data: appsData } = await supabase
