@@ -55,17 +55,17 @@ export async function POST(request: Request) {
     }
 
     // 5. Generate the magic Stripe Onboarding Link
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com';
-    
-    console.log(`[Stripe API] Generating link. Return URL: ${siteUrl}/dashboard`);
-    
-    const accountLink = await stripe.accountLinks.create({
-      account: stripeAccountId,
-      refresh_url: `${siteUrl}/dashboard`,
-      return_url: `${siteUrl}/dashboard?success=true`,
-      type: 'account_onboarding',
-    });
+// This dynamically gets localhost locally, and fxdevents.com in production
+const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com';
 
+console.log(`[Stripe API] Generating link. Return URL: ${origin}/dashboard`);
+
+const accountLink = await stripe.accountLinks.create({
+  account: stripeAccountId,
+  refresh_url: `${origin}/dashboard`,
+  return_url: `${origin}/dashboard?success=true`,
+  type: 'account_onboarding',
+});
     // 6. Send the link back to the frontend so it can redirect the user
     return NextResponse.json({ url: accountLink.url });
 
