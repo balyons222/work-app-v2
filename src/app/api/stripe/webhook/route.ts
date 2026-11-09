@@ -4,10 +4,10 @@ import { createClient } from '@supabase/supabase-js'
 
 // 1. Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: '2026-02-25.clover', // Ensure this matches your installed version
+  apiVersion: '2026-02-25.clover', 
 })
 
-// 2. Initialize Supabase Admin (Bypasses RLS)
+// 2. Initialize Supabase Admin
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL as string,
   process.env.SUPABASE_SERVICE_ROLE_KEY as string 
@@ -20,6 +20,8 @@ export async function POST(req: Request) {
   let event: Stripe.Event
 
   try {
+    // Note: If you run into Connect webhook issues locally, 
+    // remember you may need a try/catch here with STRIPE_CONNECT_WEBHOOK_SECRET
     event = stripe.webhooks.constructEvent(
       body,
       signature,
@@ -30,73 +32,64 @@ export async function POST(req: Request) {
     return new NextResponse(`Webhook Error: ${error.message}`, { status: 400 })
   }
 
-  // Handle successful checkout
+  // ========================================================
+  // EVENT: CHECKOUT COMPLETED (Escrow OR Subscription)
+  // ========================================================
   if (event.type === 'checkout.session.completed') {
-    console.log('🔔 1. WEBHOOK RECEIVED: checkout.session.completed')
     const session = event.data.object as Stripe.Checkout.Session
-if (session.metadata?.type === 'job_escrow_funding') {
-      const applicationId = session.metadata.application_id
-      const paymentIntentId = session.payment_intent as string
-      
-      console.log(`💰 ESCROW FUNDED FOR APPLICATION: ${applicationId}`)
 
+    // SCENARIO A: ORGANIZER FUNDING ESCROW
+    if (session.metadata?.type === 'job_escrow_funding') {
+      console.log('💰 ESCROW FUNDED FOR APPLICATION:', session.metadata.application_id)
+      
       const { error } = await supabaseAdmin
         .from('applications')
         .update({
           status: 'approved',
           funding_status: 'funded',
-          stripe_payment_intent_id: paymentIntentId,
+          stripe_payment_intent_id: session.payment_intent as string,
         })
-        .eq('id', applicationId)
+        .eq('id', session.metadata.application_id)
 
       if (error) {
         console.error('❌ Database update failed:', error)
         return new NextResponse('Database error', { status: 500 })
       }
-      
-      console.log('✅ Escrow database update successful!')
       return new NextResponse('Escrow funded successfully', { status: 200 })
     }
-    const userId = session.client_reference_id
-    const customerId = session.customer as string
-    const subscriptionId = session.subscription as string
-    
-    const purchasedTier = session.metadata?.purchased_tier || 'basic'
 
-    console.log('👤 2. USER ID FROM STRIPE:', userId)
-    console.log('💳 3. CUSTOMER ID:', customerId)
-    console.log('🏷️ 4. PURCHASED TIER:', purchasedTier)
+    // SCENARIO B: USER BUYING PRO SUBSCRIPTION
+    else if (session.mode === 'subscription' && session.client_reference_id) {
+      console.log('🚀 PRO SUBSCRIPTION PURCHASED')
+      const userId = session.client_reference_id
+      const customerId = session.customer as string
+      const subscriptionId = session.subscription as string
+      const tier = session.metadata?.plan_tier || 'contractor'
 
-    if (userId) {
-      console.log('🗄️ 5. ATTEMPTING SUPABASE UPDATE...')
-      const { data, error } = await supabaseAdmin
+      const { error } = await supabaseAdmin
         .from('profiles')
-        .update({
-          plan_tier: purchasedTier, 
+        .update({ 
+          plan_tier: tier,
           stripe_customer_id: customerId,
-          stripe_subscription_id: subscriptionId,
+          stripe_subscription_id: subscriptionId
         })
         .eq('id', userId)
-        .select() 
-
+        
       if (error) {
-        console.error('❌ 6. SUPABASE ERROR:', error)
-        return new NextResponse('Database Update Error', { status: 500 })
+        console.error('❌ Subscription DB Update Error:', error)
+        return new NextResponse('Database Error', { status: 500 })
       }
-      
-      console.log('✅ 7. SUPABASE UPDATE SUCCESS! Rows affected:', data?.length)
-    } else {
-      console.log('⚠️ 5. NO USER ID FOUND - SKIPPING DATABASE UPDATE')
+      return new NextResponse('Subscription activated successfully', { status: 200 })
     }
   }
 
-  // Handle subscription cancellations
+  // ========================================================
+  // EVENT: SUBSCRIPTION CANCELED
+  // ========================================================
   if (event.type === 'customer.subscription.deleted') {
     const subscription = event.data.object as Stripe.Subscription
-    
     console.log('🗑️ WEBHOOK RECEIVED: customer.subscription.deleted')
     
-    // Downgrade them to the free tier ('basic')
     await supabaseAdmin
       .from('profiles')
       .update({ 
@@ -106,25 +99,17 @@ if (session.metadata?.type === 'job_escrow_funding') {
       .eq('stripe_customer_id', subscription.customer as string)
   }
 
-  // ✅ PASTE THE NEW CONNECT ACCOUNT BLOCK HERE:
+  // ========================================================
+  // EVENT: CONNECT ACCOUNT ONBOARDED
+  // ========================================================
   if (event.type === 'account.updated') {
     const account = event.data.object as Stripe.Account
-    const payoutsEnabled = account.payouts_enabled
+    console.log(`🏦 Connect Account ${account.id} payouts_enabled set to: ${account.payouts_enabled}`)
 
-    console.log('🏦 WEBHOOK RECEIVED: account.updated')
-
-    // Update the profile based on the connected account's status
-    const { error } = await supabaseAdmin
+    await supabaseAdmin
       .from('profiles')
-      .update({ payouts_enabled: payoutsEnabled })
+      .update({ payouts_enabled: account.payouts_enabled })
       .eq('stripe_account_id', account.id)
-
-    if (error) {
-      console.error('🚨 Error updating connect account status:', error)
-      return new NextResponse('Database Error', { status: 500 })
-    }
-
-    console.log(`🏦 Connect Account ${account.id} payouts_enabled set to: ${payoutsEnabled}`)
   }
 
   return new NextResponse('Webhook processed successfully', { status: 200 })

@@ -30,7 +30,6 @@ export default function PricingPage() {
     checkPlan()
   }, [supabase])
 
-  // 1. UPDATED: Now accepts both variables dynamically
   const handleCheckout = async (priceId: string, targetRole: string) => {
     setLoading(true)
     const toastId = toast.loading('Redirecting to secure checkout...')
@@ -43,11 +42,12 @@ export default function PricingPage() {
         return
       }
 
-      const response = await fetch('/api/stripe/checkout', {
+      // 1. Point to the 'subscribe' route we built
+      const response = await fetch('/api/stripe/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // 2. UPDATED: Sending both variables to the backend
-        body: JSON.stringify({ priceId, targetRole }), 
+        // 2. Change targetRole to tierName to match our backend req.json()
+        body: JSON.stringify({ priceId, tierName: targetRole }), 
       })
 
       const data = await response.json()
@@ -55,7 +55,7 @@ export default function PricingPage() {
       if (data.url) {
         window.location.href = data.url
       } else {
-        toast.error('Failed to create checkout session.', { id: toastId })
+        toast.error(data.error || 'Failed to create checkout session.', { id: toastId })
         setLoading(false)
       }
 
@@ -81,7 +81,6 @@ export default function PricingPage() {
           </p>
         </div>
 
-        {/* 3. UPDATED: Expanded to a 3-column layout */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
           
           {/* FREE TIER CARD */}
@@ -134,7 +133,6 @@ export default function PricingPage() {
             </div>
 
             <button 
-              // 4. UPDATED: Passing Contractor strings
               onClick={() => handleCheckout('price_1UYRqLPzkSWzkzs9bIjfQMyN', 'contractor')}
               disabled={currentPlan === 'contractor' || loading}
               className="w-full py-4 rounded-xl font-black text-indigo-900 bg-white hover:bg-indigo-50 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
@@ -168,7 +166,6 @@ export default function PricingPage() {
             </div>
 
             <button 
-              // 5. UPDATED: Passing Organizer strings
               onClick={() => handleCheckout('price_1UYRqtPzkSWzkzs9F5pRTrHg', 'organizer')}
               disabled={currentPlan === 'organizer' || loading}
               className="w-full py-4 rounded-xl font-black text-slate-900 bg-emerald-400 hover:bg-emerald-300 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
