@@ -20,7 +20,7 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   const [showTerms, setShowTerms] = useState(false)
-  const isStripeConnected = !!profile?.stripe_account_id
+  const isStripeConnected = profile?.payouts_enabled === true
   
   // Event Form State
   const [title, setTitle] = useState('')
