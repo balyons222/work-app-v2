@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { sendNotification } from '@/src/utils/notifications'
 import InviteTalentModal from '@/src/components/InviteTalentModal' 
 import ChatWindow from '@/src/components/ChatWindow' 
+import ReleasePayoutButton from '@/src/components/ReleasePayoutButton'
 
 const ROLE_CATEGORIES = {
   "Operations": ["General Event Support", "Site Lead", "Site Manager", "Finish Line Lead", "Start Line Lead", "Course Lead", "Vendor Manager", "Project Manager", "Equipment Operator", "Forklift Operator", "Truck Driver (nonCDL)", "Truck Driver (CDL)", "Electrician/Power", "Volunteer Coordinator", "Expo Lead", "Expo Support", "Warehouse Coordinator"],
@@ -264,31 +265,6 @@ export default function EventManagerPage() {
     }
   }
 
-  // Safety confirmation + Escrow Release
-  const handleReleaseEscrow = async (appId: string) => {
-    const confirmed = window.confirm(
-      'Are you sure the contractor has completed this gig?\n\nThis will instantly transfer funds from escrow directly into their connected bank account.'
-    )
-    if (!confirmed) return
-
-    const toastId = toast.loading('Releasing escrow funds via Stripe...')
-    try {
-      const res = await fetch('/api/stripe/payout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ applicationId: appId })
-      })
-      const data = await res.json()
-      
-      if (!res.ok) throw new Error(data.error)
-      
-      toast.success('Funds successfully released to contractor!', { id: toastId })
-      loadEventData()
-    } catch (error: any) {
-      toast.error(error.message, { id: toastId })
-    }
-  }
-
   const handleDeleteJob = async (jobId: string) => {
     if (!confirm('Are you sure you want to delete this job?')) return
     const { error } = await supabase.from('jobs').delete().eq('id', jobId)
@@ -521,20 +497,15 @@ export default function EventManagerPage() {
                                 </div>
                               )}
                               
-                              {/* 2. Approved & Escrow Funded: Show Locked Badge & Release Button */}
-                              {app.status === 'approved' && app.funding_status === 'funded' && app.payment_status !== 'paid' && (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
-                                    🔒 In Escrow
-                                  </span>
-                                  <button 
-                                    onClick={() => handleReleaseEscrow(app.id)} 
-                                    className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
-                                  >
-                                    Release Payout
-                                  </button>
-                                </div>
-                              )}
+                     {/* 2. Approved & Escrow Funded: Show Locked Badge & Release Button */}
+{app.status === 'approved' && app.funding_status === 'funded' && app.payment_status !== 'paid' && (
+  <div className="flex items-center gap-2">
+    <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
+      🔒 In Escrow
+    </span>
+    <ReleasePayoutButton applicationId={app.id} />
+  </div>
+)}
 
                               {/* 3. Approved but Unfunded Edge Case */}
                               {app.status === 'approved' && app.funding_status !== 'funded' && app.payment_status !== 'paid' && (
