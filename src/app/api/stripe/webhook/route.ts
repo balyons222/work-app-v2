@@ -34,13 +34,33 @@ export async function POST(req: Request) {
   if (event.type === 'checkout.session.completed') {
     console.log('🔔 1. WEBHOOK RECEIVED: checkout.session.completed')
     const session = event.data.object as Stripe.Checkout.Session
+if (session.metadata?.type === 'job_escrow_funding') {
+      const applicationId = session.metadata.application_id
+      const paymentIntentId = session.payment_intent as string
+      
+      console.log(`💰 ESCROW FUNDED FOR APPLICATION: ${applicationId}`)
 
+      const { error } = await supabaseAdmin
+        .from('applications')
+        .update({
+          status: 'approved',
+          funding_status: 'funded',
+          stripe_payment_intent_id: paymentIntentId,
+        })
+        .eq('id', applicationId)
+
+      if (error) {
+        console.error('❌ Database update failed:', error)
+        return new NextResponse('Database error', { status: 500 })
+      }
+      
+      console.log('✅ Escrow database update successful!')
+      return new NextResponse('Escrow funded successfully', { status: 200 })
+    }
     const userId = session.client_reference_id
     const customerId = session.customer as string
     const subscriptionId = session.subscription as string
     
-    // 3. EXTRACT THE METADATA WE SENT FROM THE CHECKOUT ROUTE
-    // We add a fallback just in case the metadata is missing
     const purchasedTier = session.metadata?.purchased_tier || 'basic'
 
     console.log('👤 2. USER ID FROM STRIPE:', userId)
@@ -52,7 +72,7 @@ export async function POST(req: Request) {
       const { data, error } = await supabaseAdmin
         .from('profiles')
         .update({
-          plan_tier: purchasedTier, // Dynamically saves 'contractor' or 'organizer'
+          plan_tier: purchasedTier, 
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
         })
