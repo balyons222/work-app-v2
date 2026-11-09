@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@/src/utils/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-
+import { Resend } from 'resend'
+const resend = new Resend(process.env.RESEND_API_KEY)
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: '2023-10-16' as any,
 })
@@ -31,9 +32,9 @@ export async function POST(req: Request) {
         funding_status,
         payment_status,
         stripe_payment_intent_id,
-        profiles:applicant_id ( id, stripe_account_id, payouts_enabled ),
-        jobs ( id, title, rate, rate_type, estimated_hours, events ( organizer_id ) )
-      `)
+       profiles:applicant_id ( id, stripe_account_id, payouts_enabled, email, full_name ),
+  jobs ( id, title, rate, rate_type, estimated_hours, events ( organizer_id, title ) )
+`)
       .eq('id', applicationId)
       .single()
 
@@ -95,7 +96,35 @@ export async function POST(req: Request) {
         net_amount: contractorGross,                 // Payout received by contractor (100%)
         status: 'completed',
       })
+// 5. Send the "You got paid" email!
+// We wrap this in its own try/catch so an email error doesn't break the payout success response
+try {
+  await resend.emails.send({
+    from: 'FxD Events <hello@fxdevents.com>', // MUST match your verified Resend domain
+    to: contractor.email,
+    subject: `You just got paid for ${job.title}! 💸`,
+    html: `
+      <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px;">
+        <h2 style="color: #4f46e5;">Payment Released! 🎉</h2>
+        <p>Hi ${contractor.full_name?.split(' ')[0] || 'there'},</p>
+        <p>Great news! The organizer has released the escrow funds for your work at <strong>${job.events.title}</strong>.</p>
+        
+        <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
+          <p style="margin: 0; font-size: 14px; color: #64748b; text-transform: uppercase; font-weight: bold;">Amount Transferred</p>
+          <p style="margin: 4px 0 0 0; font-size: 24px; font-weight: 900; color: #0f172a;">$${contractorGross.toFixed(2)}</p>
+        </div>
 
+        <p>The funds are now on their way to your connected bank account via Stripe. Transfers typically take 1-2 business days to appear depending on your bank.</p>
+        
+        <p>Keep up the great work!</p>
+        <p><strong>The FxD Events Team</strong></p>
+      </div>
+    `
+  })
+  console.log(`📧 Payout email successfully sent to ${contractor.email}`)
+} catch (emailErr) {
+  console.error('❌ Email failed to send, but payout succeeded:', emailErr)
+}
     return NextResponse.json({ success: true, transferId: transfer.id })
   } catch (err: any) {
     console.error('Release Escrow Error:', err)
