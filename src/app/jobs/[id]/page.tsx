@@ -15,6 +15,10 @@ export default function JobDetailsPage() {
   const [appStatus, setAppStatus] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [userRole, setUserRole] = useState<string | null>(null)
+  
+  // NEW: Store the user's SaaS tier
+  const [userTier, setUserTier] = useState<string>('basic')
+  
   const [agreed, setAgreed] = useState(false)
    
   // TERMS STATE
@@ -52,15 +56,16 @@ export default function JobDetailsPage() {
     setJob(jobData)
 
     if (user) {
-      // 2. Fetch Profile
+      // 2. Fetch Profile (NOW INCLUDING plan_tier)
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, accepted_tos_at')
+        .select('role, accepted_tos_at, plan_tier')
         .eq('id', user.id)
         .single()
        
       if (profile) {
         setUserRole(profile.role)
+        setUserTier(profile.plan_tier || 'basic') // <-- Store it in state
         if (profile.accepted_tos_at) setHasAcceptedTerms(true)
       }
 
@@ -131,6 +136,43 @@ export default function JobDetailsPage() {
       toast.error('You must agree to the job terms to apply.')
       return
     }
+
+    // ==========================================
+    // SAAS LIMIT LOGIC (WITH INVITE EXEMPTION)
+    // ==========================================
+    if (userTier === 'basic') {
+      const toastId = toast.loading('Checking account limits...')
+      
+      // 1. Check if they were explicitly invited to this job
+      const { data: invite } = await supabase
+        .from('event_invitations')
+        .select('id')
+        .eq('job_id', jobId)
+        .eq('invitee_id', currentUser.id)
+        .maybeSingle()
+
+      // 2. If they have an invite, we SKIP the limit check entirely!
+      if (!invite) {
+        // They were NOT invited. Count their apps this month:
+        const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+        
+        const { count } = await supabase
+          .from('applications')
+          .select('*', { count: 'exact', head: true })
+          .eq('applicant_id', currentUser.id)
+          .gte('created_at', startOfMonth)
+
+        if (count !== null && count >= 3) {
+          toast.dismiss(toastId)
+          toast.error('You hit your limit of 3 free applications this month! Upgrade to Pro for unlimited.')
+          router.push('/pricing')
+          return
+        }
+      }
+      
+      toast.dismiss(toastId)
+    }
+    // ==========================================
 
     const toastId = toast.loading('Sending application...')
     
@@ -219,7 +261,7 @@ export default function JobDetailsPage() {
                   <p className="text-xs font-bold text-slate-500 mt-1">Est. {job.estimated_hours} hours</p>
                 )}
               </div>
-            </div> {/* This is the missing closing div you needed! */}
+            </div>
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
               <div className="bg-slate-50 p-3 rounded-lg">
