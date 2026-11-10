@@ -20,7 +20,11 @@ export default function EventManagerPage() {
   const [event, setEvent] = useState<any>(null)
   const [jobs, setJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  
+  const safeFormatDate = (dateStr: string) => {
+  if (!dateStr) return 'TBD'
+  // The { timeZone: 'UTC' } part prevents the browser from shifting the day backward!
+  return new Date(dateStr).toLocaleDateString('en-US', { timeZone: 'UTC' })
+}
   // NEW: State for tracking Organizer's tier
   const [userTier, setUserTier] = useState<string>('basic')
    
@@ -359,7 +363,7 @@ export default function EventManagerPage() {
                 <p className="text-lg text-slate-600 mb-4">{event.description}</p>
                 <div className="flex flex-wrap gap-4 text-sm font-bold text-slate-500 items-center">
                   <span>📍 {event.location}</span>
-                  <span>📅 {new Date(event.event_date).toLocaleDateString()}</span>
+                  <span>📅 {safeFormatDate(event.event_date)}</span>
                   {event.visibility === 'private' && <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-lg text-xs uppercase tracking-wider">🔒 Private Event</span>}
                 </div>
               </div>
@@ -478,9 +482,9 @@ export default function EventManagerPage() {
                       <h3 className="text-xl font-black text-primary">{job.title}</h3>
                       <div className="flex items-center gap-4 mt-1 text-sm text-slate-600">
                           <span className="font-bold bg-white border px-2 py-0.5 rounded">
-                            {job.start_date ? new Date(job.start_date).toLocaleDateString() : 'TBD'} 
-                            {job.end_date && job.end_date !== job.start_date ? ` - ${new Date(job.end_date).toLocaleDateString()}` : ''}
-                          </span>
+  {safeFormatDate(job.start_date)} 
+  {job.end_date && job.end_date !== job.start_date ? ` - ${safeFormatDate(job.end_date)}` : ''}
+</span>
                           <span className="text-slate-400">|</span>
                           <span className="font-bold text-green-600">
                             ${job.rate}/{job.rate_type === 'hourly' ? 'hr' : 'flat'}
