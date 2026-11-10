@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -8,7 +7,7 @@ import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { sendNotification } from '@/src/utils/notifications'
 import TermsModal from '@/src/components/TermsModal'
-import ChatWindow from '@/src/components/ChatWindow' // ✅ NEW IMPORT
+import ChatWindow from '@/src/components/ChatWindow'
 
 export default function JobDetailsPage() {
   const [job, setJob] = useState<any>(null)
@@ -22,7 +21,7 @@ export default function JobDetailsPage() {
   const [showTerms, setShowTerms] = useState(false)
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false)
 
-  // ✅ CHAT STATE
+  // CHAT STATE
   const [activeChat, setActiveChat] = useState<{ id: string, name: string } | null>(null)
 
   const supabase = createClient()
@@ -41,7 +40,7 @@ export default function JobDetailsPage() {
     // 1. Fetch Job Data
     const { data: jobData, error } = await supabase
       .from('jobs')
-      .select(`*, events (title, location, event_date, website, description, organizer_id)`) // ✅ Ensure organizer_id is fetched
+      .select(`*, events (title, location, event_date, website, description, organizer_id)`)
       .eq('id', jobId)
       .single()
 
@@ -78,11 +77,10 @@ export default function JobDetailsPage() {
     setLoading(false)
   }
 
-  // ✅ NEW: Handle Opening Chat
+  // Handle Opening Chat
   const handleContactOrganizer = async () => {
     if (!currentUser) return router.push('/login')
     
-    // Check if chat exists
     const { data: existingChat } = await supabase
         .from('conversations')
         .select('id')
@@ -94,14 +92,12 @@ export default function JobDetailsPage() {
     if (existingChat) {
         setActiveChat({ id: existingChat.id, name: 'Organizer' })
     } else {
-        // Create new chat
         const { data: newChat, error } = await supabase
             .from('conversations')
             .insert({
                 job_id: jobId,
                 worker_id: currentUser.id,
                 organizer_id: job.organizer_id,
-                // We leave application_id null if they haven't applied yet
             })
             .select()
             .single()
@@ -151,6 +147,7 @@ export default function JobDetailsPage() {
       setAppStatus('pending')
 
       if (job?.organizer_id) {
+        // 1. Send in-app notification
         await sendNotification({
           userId: job.organizer_id,
           title: "New Applicant 📝",
@@ -158,6 +155,13 @@ export default function JobDetailsPage() {
           link: `/dashboard/event/${job.event_id}`, 
           type: "info"
         })
+
+        // 2. Trigger automated email via our new API route
+        fetch('/api/emails/new-applicant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jobId, applicantId: currentUser.id })
+        }).catch(err => console.error('Failed to trigger email:', err))
       }
     }
   }
@@ -175,6 +179,8 @@ export default function JobDetailsPage() {
 
   if (loading) return <div className="p-20 text-center">Loading Details...</div>
   if (!job) return <div className="p-20 text-center">Job not found.</div>
+
+  const isHourly = job.rate_type === 'hourly'
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4 relative">
@@ -195,7 +201,6 @@ export default function JobDetailsPage() {
                 <h1 className="text-3xl font-black text-primary mb-2">{job.events?.title}</h1>
                 <p className="text-lg text-slate-500 font-medium mb-4">📍 {job.events?.location}</p>
 
-                {/* ✅ NEW: Message Organizer Button */}
                 {userRole !== 'organizer' && (
                     <button 
                         onClick={handleContactOrganizer}
@@ -207,9 +212,14 @@ export default function JobDetailsPage() {
               </div>
               <div className="text-right bg-slate-50 p-4 rounded-xl border border-slate-100">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Rate</p>
-                <p className="text-3xl font-black text-green-600">${job.rate}</p>
+                <p className="text-3xl font-black text-green-600">
+                  ${job.rate}<span className="text-lg text-slate-400 font-bold">{isHourly ? '/hr' : ' flat'}</span>
+                </p>
+                {isHourly && job.estimated_hours && (
+                  <p className="text-xs font-bold text-slate-500 mt-1">Est. {job.estimated_hours} hours</p>
+                )}
               </div>
-            </div>
+            </div> {/* This is the missing closing div you needed! */}
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
               <div className="bg-slate-50 p-3 rounded-lg">
@@ -235,7 +245,6 @@ export default function JobDetailsPage() {
 
               <div className="pt-8 border-t border-slate-200 mt-8">
                 
-                {/* Checkbox Logic: Show for Contractor OR Worker */}
                 {!appStatus && (userRole === 'contractor' || userRole === 'worker') && (
                   <div className="mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                     <label className="flex items-start gap-3 cursor-pointer select-none">
@@ -267,7 +276,6 @@ export default function JobDetailsPage() {
         </div>
       </div>
 
-      {/* TERMS MODAL */}
       {showTerms && currentUser && (
         <TermsModal 
           userId={currentUser.id} 
@@ -280,7 +288,6 @@ export default function JobDetailsPage() {
         />
       )}
 
-      {/* ✅ CHAT WINDOW */}
       {activeChat && currentUser && (
         <ChatWindow 
           conversationId={activeChat.id}
