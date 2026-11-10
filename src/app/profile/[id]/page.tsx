@@ -5,6 +5,7 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+import ChatWindow from '@/src/components/ChatWindow'
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<any>(null)
@@ -12,8 +13,9 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<any>(null)
   
-  // ✅ Control how many reviews are visible (Default 3)
+  // Control how many reviews are visible (Default 3)
   const [visibleCount, setVisibleCount] = useState(3)
+  const [activeChat, setActiveChat] = useState<{ id: string, name: string } | null>(null)
 
   const supabase = createClient()
   const params = useParams()
@@ -57,7 +59,6 @@ export default function ProfilePage() {
     setLoading(false)
   }
 
-  // ✅ HANDLE REPORT (Preserved)
   const handleReport = async (reviewId: string) => {
     const reason = prompt("Why are you reporting this review? (e.g. Spam, Harassment, Fake)")
     if (!reason) return
@@ -77,7 +78,45 @@ export default function ProfilePage() {
     }
   }
 
-  // Calculate Average Rating
+  const handleMessageUser = async () => {
+    if (!currentUser) {
+      toast.error('Please log in to message this user.')
+      router.push('/login')
+      return
+    }
+
+    const toastId = toast.loading('Opening secure chat...')
+
+    const { data: existingChat } = await supabase
+      .from('conversations')
+      .select('id')
+      .or(`and(worker_id.eq.${userId},organizer_id.eq.${currentUser.id}),and(worker_id.eq.${currentUser.id},organizer_id.eq.${userId})`)
+      .limit(1)
+      .maybeSingle()
+
+    if (existingChat) {
+      toast.dismiss(toastId)
+      setActiveChat({ id: existingChat.id, name: profile.full_name })
+    } else {
+      const isOrganizer = currentUser.role === 'organizer'
+      const { data: newChat, error } = await supabase
+        .from('conversations')
+        .insert({
+          worker_id: isOrganizer ? userId : currentUser.id,
+          organizer_id: isOrganizer ? currentUser.id : userId,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        toast.error('Could not start conversation', { id: toastId })
+      } else {
+        toast.dismiss(toastId)
+        setActiveChat({ id: newChat.id, name: profile.full_name })
+      }
+    }
+  }
+
   const averageRating = reviews.length > 0
     ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
     : 'New'
@@ -108,20 +147,35 @@ export default function ProfilePage() {
                 </div>
               </div>
               
-              {currentUser?.id === userId && (
-                <Link href="/setup-profile" className="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-200 transition-all">
-                  Edit Profile
-                </Link>
-              )}
+              <div className="flex gap-3">
+                {currentUser?.id === userId ? (
+                  <Link href="/setup-profile" className="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-200 transition-all">
+                    Edit Profile
+                  </Link>
+                ) : (
+                  <button 
+                    onClick={handleMessageUser}
+                    className="bg-primary text-white font-bold px-6 py-2 rounded-lg shadow hover:bg-slate-800 transition-all flex items-center gap-2"
+                  >
+                    💬 Message
+                  </button>
+                )}
+              </div>
             </div>
 
             <div>
-              <h1 className="text-3xl font-black text-slate-900 mb-1">{profile.full_name}</h1>
+              <div className="flex items-center gap-3 mb-1">
+                <h1 className="text-3xl font-black text-slate-900">{profile.full_name}</h1>
+                {profile.plan_tier === 'contractor' && (
+                  <span className="bg-gradient-to-r from-amber-400 to-orange-500 text-white text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-sm">
+                    Pro
+                  </span>
+                )}
+              </div>
               <p className="text-secondary font-bold uppercase text-xs tracking-widest mb-4">
                 {profile.role} • {profile.location || 'Location not set'}
               </p>
               
-              {/* ✅ DYNAMIC SKILLS SECTION (Replaces Hardcoded Tags) */}
               <div className="flex flex-wrap gap-2 mb-6">
                 {profile.skills && profile.skills.length > 0 ? (
                   profile.skills.map((tag: string, index: number) => (
@@ -130,7 +184,6 @@ export default function ProfilePage() {
                     </span>
                   ))
                 ) : (
-                  // Fallback if no specific skills listed
                   <span className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-full text-[10px] font-bold text-slate-500 uppercase">
                     {profile.role || 'General Staff'}
                   </span>
@@ -147,10 +200,23 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* 2. REPUTATION & REVIEWS */}
+        {/* 2. PORTFOLIO GRID */}
+        {profile.portfolio_urls && profile.portfolio_urls.length > 0 && (
+          <div className="mb-8">
+            <h3 className="text-xl font-black text-slate-900 mb-4">Portfolio</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {profile.portfolio_urls.map((url: string, idx: number) => (
+                <div key={idx} className="aspect-square bg-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow border border-slate-200">
+                  <img src={url} alt={`Portfolio ${idx + 1}`} className="w-full h-full object-cover" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 3. REPUTATION & REVIEWS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           
-          {/* A. SCORE CARD */}
           <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm text-center h-fit">
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Reputation Score</h3>
             <div className="text-5xl font-black text-slate-900 mb-2">{averageRating}</div>
@@ -162,7 +228,6 @@ export default function ProfilePage() {
             <p className="text-xs font-bold text-slate-400 uppercase">{reviews.length} Verified Reviews</p>
           </div>
 
-          {/* B. REVIEWS LIST */}
           <div className="md:col-span-2 space-y-6">
             <h3 className="text-xl font-black text-slate-900">Recent Feedback</h3>
             
@@ -172,11 +237,9 @@ export default function ProfilePage() {
               </div>
             ) : (
               <>
-                {/* MAP ONLY VISIBLE REVIEWS */}
                 {reviews.slice(0, visibleCount).map((review) => (
                   <div key={review.id} className="relative bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:border-secondary/30 transition-all group">
                     
-                    {/* Report Button */}
                     {review.status !== 'flagged' && currentUser && (
                       <button 
                         onClick={() => handleReport(review.id)}
@@ -199,7 +262,7 @@ export default function ProfilePage() {
                             <img src={review.reviewer.avatar_url} className="h-full w-full object-cover" />
                           ) : (
                             <div className="h-full w-full flex items-center justify-center font-bold text-slate-400 text-xs">
-                              {review.reviewer?.full_name?.charAt(0)}
+                              {review.reviewer?.full_name?.charAt(0) || '?'}
                             </div>
                           )}
                         </div>
@@ -225,7 +288,6 @@ export default function ProfilePage() {
                   </div>
                 ))}
 
-                {/* SHOW MORE BUTTON */}
                 {visibleCount < reviews.length && (
                   <button 
                     onClick={() => setVisibleCount(prev => prev + 5)}
@@ -239,6 +301,15 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {activeChat && currentUser && (
+        <ChatWindow 
+          conversationId={activeChat.id}
+          currentUserId={currentUser.id}
+          otherUserName={activeChat.name}
+          onClose={() => setActiveChat(null)}
+        />
+      )}
     </div>
   )
 }
