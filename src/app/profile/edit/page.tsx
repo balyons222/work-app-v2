@@ -26,9 +26,13 @@ export default function EditProfilePage() {
   // Subscription State
   const [planTier, setPlanTier] = useState('free')
   
-  // File State
+  // File State (New Uploads)
   const [headshot, setHeadshot] = useState<File | null>(null)
   const [portfolioFiles, setPortfolioFiles] = useState<FileList | null>(null)
+
+  // Existing Data State (Visuals)
+  const [existingAvatar, setExistingAvatar] = useState<string | null>(null)
+  const [existingPortfolio, setExistingPortfolio] = useState<string[]>([])
 
   const supabase = createClient()
   const router = useRouter()
@@ -70,6 +74,10 @@ export default function EditProfilePage() {
       setBio(profile.bio || '')
       setKeywords(profile.keywords || '')
       setPlanTier(profile.plan_tier || 'free')
+      
+      // Set existing images
+      setExistingAvatar(profile.avatar_url || null)
+      setExistingPortfolio(profile.portfolio_urls || [])
     }
     
     setLoading(false)
@@ -87,6 +95,11 @@ export default function EditProfilePage() {
     return urlData.publicUrl
   }
 
+  // --- REMOVE EXISTING IMAGE ---
+  const handleRemoveExistingImage = (urlToRemove: string) => {
+    setExistingPortfolio(prev => prev.filter(url => url !== urlToRemove))
+  }
+
   // --- SAVE FUNCTION ---
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -96,27 +109,29 @@ export default function EditProfilePage() {
     try {
       if (!user) throw new Error("Not authenticated")
 
-      let avatarUrl = undefined
-      let portfolioUrls = []
+      let avatarUrl = existingAvatar
+      let finalPortfolioUrls = [...existingPortfolio]
 
-      // 1. Upload Headshot
+      // 1. Upload Headshot if a new one was selected
       if (headshot) {
         toast.loading("Uploading headshot...", { id: loadingToast })
         avatarUrl = await uploadFile(headshot, user.id, 'avatar')
       }
 
-      // 2. Upload Portfolio Images
+      // 2. Upload NEW Portfolio Images
       if (portfolioFiles && portfolioFiles.length > 0) {
         const limits = getPlanLimits(planTier)
-        if (portfolioFiles.length > limits.maxImages) {
-          throw new Error(`Your ${planTier} plan allows a maximum of ${limits.maxImages} images.`)
+        
+        // Ensure old images + new images don't exceed limit
+        if ((finalPortfolioUrls.length + portfolioFiles.length) > limits.maxImages) {
+          throw new Error(`Your ${planTier} plan allows a maximum of ${limits.maxImages} total images.`)
         }
 
-        toast.loading(`Uploading ${portfolioFiles.length} portfolio images...`, { id: loadingToast })
+        toast.loading(`Uploading ${portfolioFiles.length} new portfolio images...`, { id: loadingToast })
         
         for (let i = 0; i < portfolioFiles.length; i++) {
           const url = await uploadFile(portfolioFiles[i], user.id, 'portfolio')
-          portfolioUrls.push(url)
+          finalPortfolioUrls.push(url)
         }
       }
 
@@ -128,16 +143,14 @@ export default function EditProfilePage() {
         location,
         years_experience: parseInt(experience) || 0,
         will_travel: willTravel,
-        // ✅ FIX: Send array directly so Postgres text[] column accepts it
         skills: selectedRoles, 
         certifications: certs,
         bio,
         keywords,
+        avatar_url: avatarUrl,
+        portfolio_urls: finalPortfolioUrls,
         updated_at: new Date().toISOString()
       }
-
-      if (avatarUrl) updates.avatar_url = avatarUrl
-      if (portfolioUrls.length > 0) updates.portfolio_urls = portfolioUrls
 
       const { error } = await supabase.from('profiles').upsert(updates)
       
@@ -155,9 +168,8 @@ export default function EditProfilePage() {
     } finally {
       setSaving(false)
     }
-  } // ✅ FIX: Missing closing bracket restored
+  }
 
-  // Get current limits for the UI display
   const currentLimits = getPlanLimits(planTier)
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full"></div></div>
@@ -173,10 +185,21 @@ export default function EditProfilePage() {
 
         <form onSubmit={handleSave} className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
           
-          {/* Headshot */}
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">Profile Photo (Headshot)</label>
-            <input type="file" accept="image/*" onChange={(e) => setHeadshot(e.target.files?.[0] || null)} className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+          {/* Headshot Section */}
+          <div className="flex items-center gap-6">
+            <div className="h-20 w-20 bg-slate-200 rounded-full overflow-hidden shrink-0 border border-slate-300">
+              {headshot ? (
+                <img src={URL.createObjectURL(headshot)} alt="New preview" className="h-full w-full object-cover" />
+              ) : existingAvatar ? (
+                <img src={existingAvatar} alt="Current avatar" className="h-full w-full object-cover" />
+              ) : (
+                <div className="h-full w-full flex items-center justify-center text-slate-400 text-xs font-bold">No Image</div>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">Profile Photo (Headshot)</label>
+              <input type="file" accept="image/*" onChange={(e) => setHeadshot(e.target.files?.[0] || null)} className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -251,7 +274,7 @@ export default function EditProfilePage() {
 
           {/* DYNAMIC Portfolio Images Section */}
           <div className="border-t pt-6">
-            <div className="flex justify-between items-end mb-2">
+            <div className="flex justify-between items-end mb-4">
               <label className="block text-sm font-bold text-slate-700">
                 Work Portfolio
               </label>
@@ -259,6 +282,24 @@ export default function EditProfilePage() {
                 {planTier} Plan: {currentLimits.maxImages} Images Max
               </span>
             </div>
+
+            {/* Display Existing Images */}
+            {existingPortfolio.length > 0 && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                {existingPortfolio.map((url, idx) => (
+                  <div key={idx} className="relative aspect-square bg-slate-100 rounded-lg overflow-hidden border border-slate-200 group">
+                    <img src={url} className="w-full h-full object-cover" alt={`Portfolio ${idx}`} />
+                    <button 
+                      type="button"
+                      onClick={() => handleRemoveExistingImage(url)}
+                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full h-6 w-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold shadow-md"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             
             <input 
               type="file" 
@@ -266,8 +307,8 @@ export default function EditProfilePage() {
               accept="image/*" 
               onChange={(e) => {
                 const files = e.target.files
-                if (files && files.length > currentLimits.maxImages) {
-                  toast.error(`Your plan allows up to ${currentLimits.maxImages} images.`)
+                if (files && (existingPortfolio.length + files.length > currentLimits.maxImages)) {
+                  toast.error(`Your plan allows up to ${currentLimits.maxImages} total images. You currently have ${existingPortfolio.length}.`)
                   e.target.value = '' // Reset input
                   setPortfolioFiles(null)
                 } else {
