@@ -20,6 +20,9 @@ export default function EventManagerPage() {
   const [event, setEvent] = useState<any>(null)
   const [jobs, setJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  
+  // NEW: State for tracking Organizer's tier
+  const [userTier, setUserTier] = useState<string>('basic')
    
   // EVENT DETAILS STATE
   const [isEditingEvent, setIsEditingEvent] = useState(false)
@@ -69,6 +72,15 @@ export default function EventManagerPage() {
   }, [eventId])
 
  async function loadEventData() {
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (user) {
+      const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', user.id).single()
+      if (profile) {
+        setUserTier(profile.plan_tier || 'basic')
+      }
+    }
+
     const { data: eventData, error: eventError } = await supabase
       .from('events')
       .select('*')
@@ -94,7 +106,6 @@ export default function EventManagerPage() {
       visibility: eventData.visibility || 'public'
     })
 
-    // Destructure jobsError so issues are clearly logged
     const { data: jobsData, error: jobsError } = await supabase
       .from('jobs')
       .select(`
@@ -226,6 +237,36 @@ export default function EventManagerPage() {
   const handleSaveJob = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedRole) return toast.error('Please select a role')
+    
+    // ==========================================
+    // SAAS LIMIT: 5 ROLES PER EVENT (BASIC)
+    // ONLY check if they are NOT editing an existing job
+    // ==========================================
+    if (!editingJobId && userTier === 'basic') {
+      const limitToastId = toast.loading('Checking event limits...')
+      
+      const { count, error: countError } = await supabase
+        .from('jobs')
+        .select('*', { count: 'exact', head: true })
+        .eq('event_id', eventId)
+
+      if (countError) {
+        toast.dismiss(limitToastId)
+        toast.error('Could not verify event limits.')
+        return
+      }
+
+      if (count !== null && count >= 5) {
+        toast.dismiss(limitToastId)
+        toast.error('Basic plan is limited to 5 roles per event! Upgrade to Organizer Pro to add more.')
+        router.push('/pricing')
+        return // 🛑 Stops the function here
+      }
+      
+      toast.dismiss(limitToastId)
+    }
+    // ==========================================
+
     const { data: { user } } = await supabase.auth.getUser()
     const jobData = {
       event_id: eventId,
@@ -239,6 +280,7 @@ export default function EventManagerPage() {
       rate_type: rateType,
       estimated_hours: rateType === 'hourly' ? parseFloat(estimatedHours) : 0
     }
+    
     let error;
     if (editingJobId) {
       const { error: updateError } = await supabase.from('jobs').update(jobData).eq('id', editingJobId)
@@ -247,6 +289,7 @@ export default function EventManagerPage() {
       const { error: insertError } = await supabase.from('jobs').insert(jobData)
       error = insertError
     }
+    
     if (error) toast.error(error.message)
     else {
       toast.success(editingJobId ? 'Job Updated!' : 'Job Added!')

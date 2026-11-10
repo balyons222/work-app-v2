@@ -6,8 +6,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: '2023-10-16' as any,
 })
 
-const PLATFORM_FEE_PERCENT = 0.10 // 10% platform fee paid by the organizer
-
 export async function POST(req: Request) {
   try {
     const supabase = await createClient()
@@ -17,7 +15,19 @@ export async function POST(req: Request) {
     const { applicationId } = await req.json()
     if (!applicationId) return NextResponse.json({ error: 'Missing applicationId' }, { status: 400 })
 
-    // 1. Fetch application, job rate, and event ownership
+    // 1. Fetch Organizer's Profile to check their tier
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('plan_tier')
+      .eq('id', user.id)
+      .single()
+
+    // Determine tier and dynamic fee (15% for basic, 8% for pro)
+    // Adjust 'organizer_pro' to match whatever string you save to the DB for upgraded organizers
+    const isPro = profile?.plan_tier === 'organizer_pro' 
+    const dynamicFeePercent = isPro ? 0.08 : 0.15 
+
+    // 2. Fetch application, job rate, and event ownership
     const { data, error } = await supabase
       .from('applications')
       .select(`
@@ -53,16 +63,16 @@ export async function POST(req: Request) {
       throw new Error('This position has already been funded into escrow.')
     }
 
-    // 2. Calculate contractor labor amount and platform fee
+    // 3. Calculate contractor labor amount and dynamic platform fee
     const contractorGross = job.rate_type === 'hourly'
       ? (job.rate * (job.estimated_hours || 0))
       : job.rate
 
     const contractorGrossCents = Math.round(contractorGross * 100)
-    const platformFeeCents = Math.round(contractorGrossCents * PLATFORM_FEE_PERCENT)
+    const platformFeeCents = Math.round(contractorGrossCents * dynamicFeePercent)
 
-    // 3. Create Stripe-hosted Checkout Session
-   const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com'
+    // 4. Create Stripe-hosted Checkout Session
+    const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com'
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -84,7 +94,8 @@ export async function POST(req: Request) {
             currency: 'usd',
             unit_amount: platformFeeCents,
             product_data: {
-              name: 'Platform Service Fee (10%)',
+              // Dynamically display the percentage they are paying based on their tier
+              name: `Platform Service Fee (${dynamicFeePercent * 100}%)`,
               description: 'Marketplace coordination, escrow protection, and support.',
             },
           },
@@ -98,8 +109,8 @@ export async function POST(req: Request) {
         contractor_id: app.applicant_id,
         type: 'job_escrow_funding',
       },
-     success_url: `${origin}/dashboard/event/${job.event_id}?funded=true`,
-  cancel_url: `${origin}/dashboard/event/${job.event_id}?funded=cancelled`,
+      success_url: `${origin}/dashboard/event/${job.event_id}?funded=true`,
+      cancel_url: `${origin}/dashboard/event/${job.event_id}?funded=cancelled`,
     })
 
     return NextResponse.json({ url: session.url })

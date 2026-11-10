@@ -13,6 +13,10 @@ import Image from 'next/image'
 
 function DashboardContent() {
   const [profile, setProfile] = useState<any>(null)
+  
+  // NEW: Track the user's SaaS tier explicitly
+  const [userTier, setUserTier] = useState<string>('basic')
+  
   const [events, setEvents] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState('overview')
   const [myApps, setMyApps] = useState<any[]>([])
@@ -84,6 +88,11 @@ function DashboardContent() {
 
       const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       setProfile(profileData)
+      
+      // Store tier in explicit state for easier limit checking
+      if (profileData) {
+         setUserTier(profileData.plan_tier || 'basic')
+      }
 
       // --- ORGANIZER DATA FETCH ---
       if (profileData?.role?.toLowerCase() === 'organizer') {
@@ -174,9 +183,55 @@ function DashboardContent() {
   const handleCreateEventClick = () => { if (!profile?.accepted_tos_at) { setShowTerms(true); return; } setIsCreating(!isCreating) }
 
   const handleCreateEvent = async (e: React.FormEvent) => {
-    e.preventDefault(); const { data: { user } } = await supabase.auth.getUser(); if (!user) return
-    const { error } = await supabase.from('events').insert({ title, location, event_date: date, budget: parseFloat(budget), website, description, organizer_id: user.id, poc_name: pocName, poc_phone: pocPhone, visibility })
-    if (error) toast.error('Failed to create event'); else { toast.success('Event created!'); setIsCreating(false); setTitle(''); setLocation(''); setDate(''); setBudget(''); loadDashboardData(); }
+    e.preventDefault(); 
+    
+    const { data: { user } } = await supabase.auth.getUser(); 
+    if (!user) return
+    
+    // ==========================================
+    // SAAS LIMIT: 1 EVENT PER MONTH (BASIC)
+    // ==========================================
+    if (userTier === 'basic') {
+      const limitToastId = toast.loading('Checking account limits...')
+      
+      // Get the first day of the current month
+      const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+      
+      // Count how many events this organizer created this month
+      const { count, error: countError } = await supabase
+        .from('events')
+        .select('*', { count: 'exact', head: true })
+        .eq('organizer_id', user.id)
+        .gte('created_at', startOfMonth)
+
+      if (countError) {
+         toast.dismiss(limitToastId)
+         toast.error('Could not verify account limits.')
+         return
+      }
+
+      if (count !== null && count >= 1) {
+        toast.dismiss(limitToastId)
+        toast.error('Basic plan is limited to 1 event per month! Upgrade to Organizer Hub for unlimited.')
+        router.push('/pricing')
+        return // 🛑 Stops the function here
+      }
+      
+      toast.dismiss(limitToastId)
+    }
+    // ==========================================
+
+    const { error } = await supabase.from('events').insert({ 
+      title, location, event_date: date, budget: parseFloat(budget), website, description, organizer_id: user.id, poc_name: pocName, poc_phone: pocPhone, visibility 
+    })
+    
+    if (error) {
+       toast.error('Failed to create event')
+    } else { 
+       toast.success('Event created!'); 
+       setIsCreating(false); setTitle(''); setLocation(''); setDate(''); setBudget(''); 
+       loadDashboardData(); 
+    }
   }
 
   const handleDeleteEvent = async (eventId: string) => { if (!confirm("Are you sure?")) return; const { error } = await supabase.from('events').delete().eq('id', eventId); if (!error) { toast.success("Event deleted"); loadDashboardData(); } }
@@ -195,6 +250,18 @@ function DashboardContent() {
   }
 
   const handleDuplicateEvent = async (originalEventId: string) => {
+    
+    // Check tier limits for duplication too!
+    if (userTier === 'basic') {
+       const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+       const { count } = await supabase.from('events').select('*', { count: 'exact', head: true }).eq('organizer_id', profile.id).gte('created_at', startOfMonth)
+       if (count !== null && count >= 1) {
+          toast.error('Basic plan is limited to 1 event per month! Upgrade to Organizer Hub for unlimited.')
+          router.push('/pricing')
+          return 
+       }
+    }
+
     const newDateStr = window.prompt("Enter the date for the new event (YYYY-MM-DD):", "");
     if (!newDateStr) return; 
 
@@ -289,11 +356,11 @@ function DashboardContent() {
                 {/* 1. DYNAMIC TIER BADGE */}
                 <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full shadow-sm ${
                   profile?.plan_tier === 'contractor' ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white' :
-                  profile?.plan_tier === 'organizer' ? 'bg-emerald-500 text-white' :
+                  profile?.plan_tier === 'organizer_pro' ? 'bg-emerald-500 text-white' :
                   'bg-slate-100 text-slate-500' // Basic fallback
                 }`}>
                   {profile?.plan_tier === 'contractor' ? 'PRO MEMBER' : 
-                   profile?.plan_tier === 'organizer' ? 'PRO HUB' : 
+                   profile?.plan_tier === 'organizer_pro' ? 'PRO HUB' : 
                    'BASIC PLAN'}
                 </span>
 
@@ -314,7 +381,7 @@ function DashboardContent() {
             )}
             
             {/* 2. DYNAMIC BUTTON GATING */}
-            {['contractor', 'organizer'].includes(profile?.plan_tier) ? (
+            {['contractor', 'organizer_pro'].includes(profile?.plan_tier) ? (
               <button 
                 onClick={handleManageSubscription}
                 className="w-full md:w-auto text-center px-6 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold hover:bg-indigo-100 transition-all border border-indigo-100"
