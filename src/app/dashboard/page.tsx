@@ -191,7 +191,7 @@ function DashboardContent() {
     // ==========================================
     // SAAS LIMIT: 1 EVENT PER MONTH (BASIC)
     // ==========================================
-    if (userTier === 'basic') {
+    if (userTier !== 'organizer_pro') {
       const limitToastId = toast.loading('Checking account limits...')
       
       // Get the first day of the current month

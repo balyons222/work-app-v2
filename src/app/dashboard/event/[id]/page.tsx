@@ -242,7 +242,7 @@ export default function EventManagerPage() {
     // SAAS LIMIT: 5 ROLES PER EVENT (BASIC)
     // ONLY check if they are NOT editing an existing job
     // ==========================================
-    if (!editingJobId && userTier === 'basic') {
+   if (!editingJobId && userTier !== 'organizer_pro') {
       const limitToastId = toast.loading('Checking event limits...')
       
       const { count, error: countError } = await supabase
