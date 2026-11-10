@@ -37,22 +37,36 @@ export async function POST(request: Request) {
 
     let stripeAccountId = profile.stripe_account_id;
 
-    // 4. If they don't have a Stripe account yet, create one!
-    if (!stripeAccountId) {
-      console.log('[Stripe API] Creating new Stripe Express account...');
-      const account = await stripe.accounts.create({
-        type: 'express',
-        email: profile.email || undefined,
-      });
-      
-      stripeAccountId = account.id;
-
-      // Save this new Stripe ID to your Supabase database
-      await supabaseAdmin
-        .from('profiles')
-        .update({ stripe_account_id: stripeAccountId })
-        .eq('id', userId);
+    // 4. Validate or create the account
+if (stripeAccountId) {
+  try {
+    // Ping Stripe to ensure the account still exists
+    await stripe.accounts.retrieve(stripeAccountId);
+  } catch (err: any) {
+    if (err.code === 'resource_missing' || err.code === 'account_invalid') {
+      console.log('[Stripe API] Ghost account detected. Resetting...');
+      stripeAccountId = null; // Force the creation of a new one below
+    } else {
+      throw err; // It's a real error, throw it
     }
+  }
+}
+
+if (!stripeAccountId) {
+  console.log('[Stripe API] Creating new Stripe Express account...');
+  const account = await stripe.accounts.create({
+    type: 'express',
+    email: profile.email || undefined,
+  });
+  
+  stripeAccountId = account.id;
+
+  // Save this new valid Stripe ID to Supabase
+  await supabaseAdmin
+    .from('profiles')
+    .update({ stripe_account_id: stripeAccountId })
+    .eq('id', userId);
+}
 
     // 5. Generate the magic Stripe Onboarding Link
 // This dynamically gets localhost locally, and fxdevents.com in production
