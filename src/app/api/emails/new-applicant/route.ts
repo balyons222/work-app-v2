@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     // 2. Send the Email
     // Using the newer Resend syntax which returns an error object instead of throwing
     const { error: emailError } = await resend.emails.send({
-      from: 'FxD Events <onboarding@resend.dev>', // Use Resend's test address to prevent verification errors
+      from: 'FxD Events <hello@fxdevents.com>', // Use Resend's test address to prevent verification errors
       to: organizerEmail, // MUST be your own email address while on Resend's free tier!
       subject: `New Applicant: ${applicant.full_name} applied for ${job.title}`,
       html: `
