@@ -381,7 +381,7 @@ function DashboardContent() {
             )}
             
             {/* 2. DYNAMIC BUTTON GATING */}
-            {['contractor', 'organizer_pro'].includes(profile?.plan_tier) ? (
+            {['contractor', 'organizer', 'organizer_pro'].includes(profile?.plan_tier) ? (
               <button 
                 onClick={handleManageSubscription}
                 className="w-full md:w-auto text-center px-6 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold hover:bg-indigo-100 transition-all border border-indigo-100"
