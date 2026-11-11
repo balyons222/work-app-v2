@@ -68,8 +68,13 @@ if (!stripeAccountId) {
     .eq('id', userId);
 }
 
-   // 5. Generate the magic Stripe Onboarding Link
-const rawOrigin = request.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com';
+  // 5. Generate the magic Stripe Onboarding Link
+let rawOrigin = request.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com';
+
+// OVERRIDE: Stripe blocks localhost on live mode. Force it to production.
+if (rawOrigin.includes('localhost')) {
+  rawOrigin = 'https://fxdevents.com';
+}
 
 // Force https for Stripe livemode compliance
 const safeOrigin = rawOrigin.startsWith('http://') 
