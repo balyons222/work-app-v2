@@ -19,6 +19,7 @@ export async function POST(req: Request) {
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
+      allow_promotion_codes: true,
       success_url: `${origin}/dashboard?upgraded=true`,
       cancel_url: `${origin}/pricing`,
       client_reference_id: user.id, // Crucial: tells the webhook who bought this
