@@ -133,7 +133,7 @@ export default function PricingPage() {
             </div>
 
             <button 
-              onClick={() => handleCheckout('price_1UYRqLPzkSWzkzs9bIjfQMyN', 'contractor')}
+              onClick={() => handleCheckout('price_1UaJTTPzkSWzkzs9RpK2s3OB', 'contractor')}
               disabled={currentPlan === 'contractor' || loading}
               className="w-full py-4 rounded-xl font-black text-indigo-900 bg-white hover:bg-indigo-50 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -166,7 +166,7 @@ export default function PricingPage() {
             </div>
 
             <button 
-              onClick={() => handleCheckout('price_1UYRqtPzkSWzkzs9F5pRTrHg', 'organizer')}
+              onClick={() => handleCheckout('price_1UaJTbPzkSWzkzs9cSeQjR0R', 'organizer')}
               disabled={currentPlan === 'organizer' || loading}
               className="w-full py-4 rounded-xl font-black text-slate-900 bg-emerald-400 hover:bg-emerald-300 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
