@@ -152,18 +152,31 @@ const resend = new Resend(process.env.RESEND_API_KEY)
       .eq('stripe_customer_id', subscription.customer as string)
   }
 
-  // ========================================================
-  // EVENT: CONNECT ACCOUNT ONBOARDED
-  // ========================================================
+// ========================================================
+// EVENT: CONNECT ACCOUNT ONBOARDED
+// ========================================================
 if (event.type === 'account.updated' || (event.type as string) === 'v2.core.account.updated') {
-    const account = event.data.object as Stripe.Account
-    console.log(`🏦 Connect Account ${account.id} payouts_enabled set to: ${account.payouts_enabled}`)
+  
+  const eventData = event as any;
+  
+  // 1. Extract the Stripe Account ID (handles both v1 and v2 payload structures)
+  const accountId = event.type === 'account.updated' 
+    ? eventData.data.object.id 
+    : (eventData.related_object?.id || eventData.data?.object?.id);
 
+  if (accountId) {
+    // 2. Ask Stripe for the true, fresh account details
+    const freshAccount = await stripe.accounts.retrieve(accountId);
+    
+    console.log(`🏦 Connect Account ${freshAccount.id} payouts_enabled set to: ${freshAccount.payouts_enabled}`);
+
+    // 3. Update Supabase
     await supabaseAdmin
       .from('profiles')
-      .update({ payouts_enabled: account.payouts_enabled })
-      .eq('stripe_account_id', account.id)
+      .update({ payouts_enabled: freshAccount.payouts_enabled })
+      .eq('stripe_account_id', freshAccount.id);
   }
+}
 
   return new NextResponse('Webhook processed successfully', { status: 200 })
 }
