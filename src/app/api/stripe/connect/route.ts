@@ -68,16 +68,20 @@ if (!stripeAccountId) {
     .eq('id', userId);
 }
 
-    // 5. Generate the magic Stripe Onboarding Link
-// This dynamically gets localhost locally, and fxdevents.com in production
-const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com';
+   // 5. Generate the magic Stripe Onboarding Link
+const rawOrigin = request.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com';
 
-console.log(`[Stripe API] Generating link. Return URL: ${origin}/dashboard`);
+// Force https for Stripe livemode compliance
+const safeOrigin = rawOrigin.startsWith('http://') 
+  ? rawOrigin.replace('http://', 'https://') 
+  : rawOrigin;
+
+console.log(`[Stripe API] Generating link. Return URL: ${safeOrigin}/dashboard`);
 
 const accountLink = await stripe.accountLinks.create({
   account: stripeAccountId,
-  refresh_url: `${origin}/dashboard`,
-  return_url: `${origin}/dashboard?success=true`,
+  refresh_url: `${safeOrigin}/dashboard`,
+  return_url: `${safeOrigin}/dashboard?success=true`,
   type: 'account_onboarding',
 });
     // 6. Send the link back to the frontend so it can redirect the user
