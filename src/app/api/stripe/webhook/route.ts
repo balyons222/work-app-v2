@@ -155,7 +155,7 @@ const resend = new Resend(process.env.RESEND_API_KEY)
   // ========================================================
   // EVENT: CONNECT ACCOUNT ONBOARDED
   // ========================================================
-  if (event.type === 'account.updated') {
+if (event.type === 'account.updated' || (event.type as string) === 'v2.core.account.updated') {
     const account = event.data.object as Stripe.Account
     console.log(`🏦 Connect Account ${account.id} payouts_enabled set to: ${account.payouts_enabled}`)
 
