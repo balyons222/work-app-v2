@@ -35,8 +35,8 @@ export async function POST(req: Request) {
       ],
       mode: 'subscription',
       allow_promotion_codes: true, 
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'http://fxdevents.com'}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'http://fxdevents.com'}/dashboard`,
+      success_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://fxdevents.com'}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://fxdevents.com'}/dashboard`,
       client_reference_id: user.id,
       // 2. ADD THIS METADATA BLOCK to pass the tier to your webhook
       metadata: {
