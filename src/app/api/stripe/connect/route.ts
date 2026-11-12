@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
-
+import { createClient as createServerClient } from '@/src/utils/supabase/server';
 // 1. Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2023-10-16' as any,
@@ -15,12 +15,14 @@ const supabaseAdmin = createClient(
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { userId } = body;
+   const supabaseServer = await createServerClient();
+const { data: { user } } = await supabaseServer.auth.getUser();
 
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
-    }
+if (!user) {
+  return NextResponse.json({ error: 'Unauthorized session' }, { status: 401 });
+}
+
+const userId = user.id;
 
     console.log(`[Stripe API] Starting onboarding for User: ${userId}`);
 
