@@ -2,7 +2,6 @@
 
 import { useEffect, useState, Suspense } from 'react'
 import { createClient } from '@/src/utils/supabase/client'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { sendNotification } from '@/src/utils/notifications'
@@ -10,6 +9,7 @@ import TermsModal from '@/src/components/TermsModal'
 import ChatWindow from '@/src/components/ChatWindow'
 import StripeConnectButton from '@/src/components/StripeConnectButton'
 import Image from 'next/image'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 function DashboardContent() {
   const [profile, setProfile] = useState<any>(null)
@@ -47,7 +47,30 @@ function DashboardContent() {
 
   const supabase = createClient()
   const router = useRouter()
+const searchParams = useSearchParams();
+const successParam = searchParams.get('success');
 
+// NEW: Sync Stripe state when returning from onboarding
+useEffect(() => {
+  if (successParam === 'true') {
+    const syncStripe = async () => {
+      const toastId = toast.loading('Verifying secure connection...');
+      try {
+        await fetch('/api/stripe/sync', { method: 'POST' });
+        toast.success('Bank connection verified!', { id: toastId });
+        
+        // Clean up the URL so it doesn't re-run on page refresh
+        router.replace('/dashboard');
+        
+        // Refresh the dashboard UI
+        loadDashboardData();
+      } catch (error) {
+        toast.error('Failed to sync bank status.', { id: toastId });
+      }
+    };
+    syncStripe();
+  }
+}, [successParam, router]);
   useEffect(() => {
     loadDashboardData()
   }, [])

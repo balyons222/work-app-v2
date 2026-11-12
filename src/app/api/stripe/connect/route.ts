@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/src/utils/supabase/server';
+
 // 1. Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2023-10-16' as any,
@@ -15,14 +16,14 @@ const supabaseAdmin = createClient(
 
 export async function POST(request: Request) {
   try {
-   const supabaseServer = await createServerClient();
-const { data: { user } } = await supabaseServer.auth.getUser();
+    const supabaseServer = await createServerClient();
+    const { data: { user } } = await supabaseServer.auth.getUser();
 
-if (!user) {
-  return NextResponse.json({ error: 'Unauthorized session' }, { status: 401 });
-}
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized session' }, { status: 401 });
+    }
 
-const userId = user.id;
+    const userId = user.id;
 
     console.log(`[Stripe API] Starting onboarding for User: ${userId}`);
 
@@ -40,58 +41,64 @@ const userId = user.id;
     let stripeAccountId = profile.stripe_account_id;
 
     // 4. Validate or create the account
-if (stripeAccountId) {
-  try {
-    // Ping Stripe to ensure the account still exists
-    await stripe.accounts.retrieve(stripeAccountId);
-  } catch (err: any) {
-    if (err.code === 'resource_missing' || err.code === 'account_invalid') {
-      console.log('[Stripe API] Ghost account detected. Resetting...');
-      stripeAccountId = null; // Force the creation of a new one below
-    } else {
-      throw err; // It's a real error, throw it
+    if (stripeAccountId) {
+      try {
+        await stripe.accounts.retrieve(stripeAccountId);
+      } catch (err: any) {
+        if (err.code === 'resource_missing' || err.code === 'account_invalid') {
+          console.log('[Stripe API] Ghost account detected. Resetting...');
+          stripeAccountId = null; 
+        } else {
+          throw err; 
+        }
+      }
     }
-  }
-}
 
-if (!stripeAccountId) {
-  console.log('[Stripe API] Creating new Stripe Express account...');
-  const account = await stripe.accounts.create({
-    type: 'express',
-    email: profile.email || undefined,
-  });
-  
-  stripeAccountId = account.id;
+    if (!stripeAccountId) {
+      console.log('[Stripe API] Creating new Stripe Express account...');
+      const account = await stripe.accounts.create({
+        type: 'express',
+        country: 'US',
+        email: profile.email || undefined,
+        // FIX: Explicitly request transfers and inject metadata for webhook safety
+        capabilities: { transfers: { requested: true } },
+        metadata: { supabase_user_id: userId },
+      });
+      
+      stripeAccountId = account.id;
 
-  // Save this new valid Stripe ID to Supabase
-  await supabaseAdmin
-    .from('profiles')
-    .update({ stripe_account_id: stripeAccountId })
-    .eq('id', userId);
-}
+      // FIX: Strictly catch database update failures so we don't strand the user
+      const { error: saveError } = await supabaseAdmin
+        .from('profiles')
+        .update({ stripe_account_id: stripeAccountId })
+        .eq('id', userId);
+        
+      if (saveError) {
+        throw new Error(`Failed to save Stripe account: ${saveError.message}`);
+      }
+    }
 
-  // 5. Generate the magic Stripe Onboarding Link
-let rawOrigin = request.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com';
+    // 5. Generate the magic Stripe Onboarding Link
+    let rawOrigin = request.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com';
 
-// OVERRIDE: Stripe blocks localhost on live mode. Force it to production.
-if (rawOrigin.includes('localhost')) {
-  rawOrigin = 'https://fxdevents.com';
-}
+    if (rawOrigin.includes('localhost')) {
+      rawOrigin = 'https://fxdevents.com';
+    }
 
-// Force https for Stripe livemode compliance
-const safeOrigin = rawOrigin.startsWith('http://') 
-  ? rawOrigin.replace('http://', 'https://') 
-  : rawOrigin;
+    const safeOrigin = rawOrigin.startsWith('http://') 
+      ? rawOrigin.replace('http://', 'https://') 
+      : rawOrigin;
 
-console.log(`[Stripe API] Generating link. Return URL: ${safeOrigin}/dashboard`);
+    console.log(`[Stripe API] Generating link. Return URL: ${safeOrigin}/dashboard`);
 
-const accountLink = await stripe.accountLinks.create({
-  account: stripeAccountId,
-  refresh_url: `${safeOrigin}/dashboard`,
-  return_url: `${safeOrigin}/dashboard?success=true`,
-  type: 'account_onboarding',
-});
-    // 6. Send the link back to the frontend so it can redirect the user
+    const accountLink = await stripe.accountLinks.create({
+      account: stripeAccountId,
+      refresh_url: `${safeOrigin}/dashboard`,
+      return_url: `${safeOrigin}/dashboard?success=true`,
+      type: 'account_onboarding',
+    });
+    
+    // 6. Send the link back to the frontend
     return NextResponse.json({ url: accountLink.url });
 
   } catch (err: any) {
