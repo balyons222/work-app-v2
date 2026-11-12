@@ -191,7 +191,7 @@ function DashboardContent() {
     // ==========================================
     // SAAS LIMIT: 1 EVENT PER MONTH (BASIC)
     // ==========================================
-    if (userTier !== 'organizer_pro') {
+    if (userTier !== 'organizer') {
       const limitToastId = toast.loading('Checking account limits...')
       
       // Get the first day of the current month
@@ -356,11 +356,11 @@ function DashboardContent() {
                 {/* 1. DYNAMIC TIER BADGE */}
                 <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full shadow-sm ${
                   profile?.plan_tier === 'contractor' ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white' :
-                  profile?.plan_tier === 'organizer_pro' ? 'bg-emerald-500 text-white' :
+                  profile?.plan_tier === 'organizer' ? 'bg-emerald-500 text-white' :
                   'bg-slate-100 text-slate-500' // Basic fallback
                 }`}>
                   {profile?.plan_tier === 'contractor' ? 'PRO MEMBER' : 
-                   profile?.plan_tier === 'organizer_pro' ? 'PRO HUB' : 
+                   profile?.plan_tier === 'organizer' ? 'PRO HUB' : 
                    'BASIC PLAN'}
                 </span>
 

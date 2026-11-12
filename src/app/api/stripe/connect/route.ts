@@ -3,7 +3,7 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
 // 1. Initialize Stripe
-const stripe = new Stripe('sk_test_51T20sJPzkSWzkzs9NEuMxMPdQGFvNpOJq67SIVKOfutSq5D9VY4IgBtYANj9o3MRgHy4BjJCRhJF6FpYr9lzuNvI009hFETkcr', {
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2023-10-16' as any, // Use your current API version
 });
 
