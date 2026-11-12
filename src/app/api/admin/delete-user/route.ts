@@ -12,8 +12,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // SECURITY NOTE: In a production app, add a check here to ensure 
-    // `user.id` belongs to a platform admin before proceeding!
+    const adminEmails = ['brian@fxdevents.com', 'brian@l27consulting.com'];
+    if (!user.email || !adminEmails.includes(user.email)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    } // <--- THIS WAS MISSING!
 
     const body = await request.json();
     const { targetUserId } = body;
