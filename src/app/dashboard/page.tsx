@@ -328,16 +328,17 @@ function DashboardContent() {
         </div>
 
         {/* Get Paid Banner */}
-        {profile?.plan_tier === 'contractor' &&
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-lg font-bold">Get Paid</h3>
-              <p className="text-gray-500 text-sm">Connect your bank account to receive payments and tax forms.</p>
-            </div>
-            <StripeConnectButton isConnected={isStripeConnected} />
-          </div>
-        </div>
+{profile?.plan_tier === 'contractor' && (
+  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8">
+    <div className="flex justify-between items-center">
+      <div>
+        <h3 className="text-lg font-bold">Get Paid</h3>
+        <p className="text-gray-500 text-sm">Connect your bank account to receive payments and tax forms.</p>
+      </div>
+      <StripeConnectButton isConnected={isStripeConnected} />
+    </div>
+  </div>
+)}
 
         {/* SINGLE CLEAN PROFILE HEADER */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
