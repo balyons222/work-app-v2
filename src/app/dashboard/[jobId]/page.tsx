@@ -7,6 +7,7 @@ import Link from 'next/link'
 import StarRating from '@/src/components/StarRating'
 import ReviewModal from '@/src/components/ReviewModal'
 import { startChat } from '@/src/utils/startChat'
+import { PUBLIC_PROFILE_COLUMNS } from '@/src/utils/profileColumns'
 
 export default function JobDetailsPage() {
   const [job, setJob] = useState<any>(null)
@@ -42,7 +43,7 @@ export default function JobDetailsPage() {
     // 2. Fetch Applicants
     const { data: appsData, error: appsError } = await supabase
       .from('applications')
-      .select('*, profiles(*)') 
+      .select(`*, profiles(${PUBLIC_PROFILE_COLUMNS})`) 
       .eq('job_id', jobId)
       .order('created_at', { ascending: false })
 

@@ -22,13 +22,17 @@ export default async function OrganizerRosterPage() {
     .from('applications')
     .select(`
       id, status, payment_status, applicant_id,
-      profiles:applicant_id ( id, full_name, email, avatar_url, phone ),
+      profiles:applicant_id ( id, full_name, avatar_url ),
       jobs!inner ( id, rate, title, events ( title, event_date ) )
     `)
     .eq('jobs.organizer_id', user.id)
     .eq('status', 'approved')
 
   if (error) console.error('Error fetching roster:', error.message)
+
+  // Email/phone are private columns; this function returns them only for contractors this organizer has hired
+  const { data: contacts } = await supabase.rpc('hired_contractor_contacts')
+  const contactById = new Map<string, any>((contacts || []).map((c: any) => [c.id, c]))
 
   const rosterMap = new Map<string, any>()
 
@@ -38,7 +42,11 @@ export default async function OrganizerRosterPage() {
     
     if (!rosterMap.has(contractorId)) {
       rosterMap.set(contractorId, {
-        profile: Array.isArray(app.profiles) ? app.profiles[0] : app.profiles,
+        profile: {
+          ...(Array.isArray(app.profiles) ? app.profiles[0] : app.profiles),
+          email: contactById.get(contractorId)?.email ?? null,
+          phone: contactById.get(contractorId)?.phone ?? null,
+        },
         totalEarned: 0, pendingPayments: 0, eventsWorked: 0, upcomingShifts: 0, jobHistory: []
       })
     }

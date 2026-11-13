@@ -58,7 +58,7 @@ export default function JobDetailsPage() {
     if (user) {
       // 2. Fetch Profile (NOW INCLUDING plan_tier)
       const { data: profile } = await supabase
-        .from('profiles')
+        .from('my_profile')
         .select('role, accepted_tos_at, plan_tier')
         .eq('id', user.id)
         .single()

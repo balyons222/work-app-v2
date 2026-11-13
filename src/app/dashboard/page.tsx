@@ -109,7 +109,7 @@ useEffect(() => {
         return
       }
 
-      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      const { data: profileData } = await supabase.from('my_profile').select('*').eq('id', user.id).single()
       setProfile(profileData)
       
       // Store tier in explicit state for easier limit checking

@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     const { priceId, targetRole } = body 
 
     const { data: profile } = await supabase
-      .from('profiles')
+      .from('my_profile')
       .select('stripe_customer_id')
       .eq('id', user.id)
       .single()

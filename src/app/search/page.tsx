@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { createClient } from '../../utils/supabase/client'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { PUBLIC_PROFILE_COLUMNS } from '@/src/utils/profileColumns'
 
 function SearchContent() {
   const [allProfiles, setAllProfiles] = useState<any[]>([]) 
@@ -30,7 +31,7 @@ function SearchContent() {
     const { data, error } = await supabase
       .from('profiles')
       .select(`
-        *,
+        ${PUBLIC_PROFILE_COLUMNS},
         reviews!reviewee_id (rating)
       `)
     

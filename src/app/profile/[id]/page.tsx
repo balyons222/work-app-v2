@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import ChatWindow from '@/src/components/ChatWindow'
+import { PUBLIC_PROFILE_COLUMNS } from '@/src/utils/profileColumns'
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<any>(null)
@@ -33,7 +34,7 @@ export default function ProfilePage() {
     // 1. Fetch Profile Info
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select(PUBLIC_PROFILE_COLUMNS)
       .eq('id', userId)
       .single()
 

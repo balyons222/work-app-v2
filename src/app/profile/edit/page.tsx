@@ -53,7 +53,7 @@ export default function EditProfilePage() {
     setUser(user)
 
     const { data: profile } = await supabase
-      .from('profiles')
+      .from('my_profile')
       .select('*')
       .eq('id', user.id)
       .single()
