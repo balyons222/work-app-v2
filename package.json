@@ -9,8 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "db:link": "supabase link",
-    "db:pull": "supabase db pull",
-    "db:types": "supabase gen types typescript --linked --schema public > src/types/database.ts"
+    "db:pull": "supabase db pull --remote --schema public",
+    "db:types": "supabase gen types --lang typescript --remote --schema public > src/types/database.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",
