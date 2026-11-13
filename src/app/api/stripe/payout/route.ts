@@ -14,7 +14,8 @@ const supabaseAdmin = createAdminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const PLATFORM_FEE_PERCENT = 0.10 // Must match fund-job
+// Rows funded before funded_amount_cents/funded_labor_cents were recorded all used the old flat 10% fee
+const LEGACY_FEE_RATE = 0.10
 
 // Errors safe to show the organizer (anything else gets a generic message)
 class PayoutError extends Error {
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
       .from('applications')
       .select(`
         id, applicant_id, status, funding_status, payment_status, actual_hours,
-        stripe_payment_intent_id, stripe_charge_id, funded_labor_cents,
+        stripe_payment_intent_id, stripe_charge_id, funded_labor_cents, funded_amount_cents,
         jobs ( id, title, rate, rate_type, estimated_hours, organizer_id, events ( title ) )
       `)
       .eq('id', applicationId)
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
     if (!fundedLaborCents) {
       // Legacy rows funded before funded_labor_cents was recorded: derive from the charge (labor + 10% fee)
       const charge = await stripe.charges.retrieve(chargeId)
-      fundedLaborCents = Math.round(charge.amount / (1 + PLATFORM_FEE_PERCENT))
+      fundedLaborCents = Math.round(charge.amount / (1 + LEGACY_FEE_RATE))
     }
 
     // 5. Payout amount
@@ -144,23 +145,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, transferId: transfer.id })
     }
 
-    // 9. Refund unused escrow labor to the organizer (hourly jobs that came in under estimate)
-    const unusedCents = fundedLaborCents - payoutCents
-    if (unusedCents > 0) {
+    // 9. Refund unused escrow to the organizer (hourly jobs that came in under estimate):
+    //    the unused labor PLUS the platform fee charged on that unused labor.
+    //    Fee charged at funding = Basic 15% / Pro Hub 10%, fixed when funded.
+    const fundedFeeCents = app.funded_amount_cents && app.funded_labor_cents
+      ? app.funded_amount_cents - app.funded_labor_cents
+      : Math.round(fundedLaborCents * LEGACY_FEE_RATE)
+    const unusedLaborCents = fundedLaborCents - payoutCents
+    const unusedFeeCents = unusedLaborCents > 0
+      ? Math.round(fundedFeeCents * unusedLaborCents / fundedLaborCents)
+      : 0
+    const refundCents = unusedLaborCents + unusedFeeCents
+
+    if (refundCents > 0) {
       try {
         await stripe.refunds.create({
           charge: chargeId,
-          amount: unusedCents,
-          metadata: { application_id: app.id, type: 'unused_escrow_refund' },
+          amount: refundCents,
+          metadata: {
+            application_id: app.id,
+            type: 'unused_escrow_refund',
+            unused_labor_cents: String(unusedLaborCents),
+            unused_fee_cents: String(unusedFeeCents),
+          },
         }, { idempotencyKey: `refund-unused-${app.id}` })
       } catch (refundErr: any) {
         // Don't fail the contractor's payout, but this needs manual follow-up
-        console.error('CRITICAL: Unused escrow refund failed — refund manually', { applicationId: app.id, chargeId, unusedCents }, refundErr.message)
+        console.error('CRITICAL: Unused escrow refund failed — refund manually', { applicationId: app.id, chargeId, refundCents }, refundErr.message)
       }
     }
 
-    // 10. Ledger
-    const platformFeeCents = Math.round(payoutCents * PLATFORM_FEE_PERCENT)
+    // 10. Ledger: the fee the platform keeps is the fee on labor actually paid out
+    const platformFeeCents = fundedFeeCents - unusedFeeCents
     const { error: ledgerError } = await supabaseAdmin.from('payouts').insert({
       application_id: app.id,
       job_id: job.id,
@@ -168,7 +184,7 @@ export async function POST(req: Request) {
       organizer_id: user.id,
       stripe_payment_intent_id: app.stripe_payment_intent_id,
       stripe_transfer_id: transfer.id,
-      gross_amount: (payoutCents + platformFeeCents) / 100, // Paid by organizer for work performed
+      gross_amount: (payoutCents + platformFeeCents) / 100, // Labor paid out + fee retained
       platform_fee: platformFeeCents / 100,
       net_amount: payoutCents / 100,                       // Received by contractor
       status: 'completed',

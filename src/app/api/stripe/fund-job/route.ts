@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient as createServerClient } from '@/src/utils/supabase/server'
 import { createClient } from '@supabase/supabase-js'
+import { platformFeeRate } from '@/src/config/platformFees'
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
@@ -78,7 +79,16 @@ export async function POST(req: Request) {
       : job.rate
 
     const laborCents = Math.round(laborCost * 100)
-    const feeCents = Math.round(laborCents * 0.10)
+
+    // Fee depends on the organizer's plan AT FUNDING TIME (Basic 15%, Pro Hub 10%).
+    // The charged amount is stored by the webhook, so payout uses the rate actually paid.
+    const { data: organizer } = await supabaseAdmin
+      .from('profiles')
+      .select('plan_tier')
+      .eq('id', user.id)
+      .single()
+    const feeRate = platformFeeRate(organizer?.plan_tier)
+    const feeCents = Math.round(laborCents * feeRate)
     const amountInCents = laborCents + feeCents
 
     if (amountInCents < 50) {
@@ -104,7 +114,7 @@ export async function POST(req: Request) {
             currency: 'usd',
             product_data: {
               name: `Escrow Funding: ${job.title}`,
-              description: `Labor: $${(laborCents / 100).toFixed(2)} + Platform Fee: $${(feeCents / 100).toFixed(2)}\nContractor: ${contractor.full_name}`,
+              description: `Labor: $${(laborCents / 100).toFixed(2)} + Platform Fee (${Math.round(feeRate * 100)}%): $${(feeCents / 100).toFixed(2)}\nContractor: ${contractor.full_name}`,
             },
             unit_amount: amountInCents,
           },
@@ -122,7 +132,8 @@ export async function POST(req: Request) {
         organizer_id: user.id,
         contractor_id: contractor.id,
         type: 'job_escrow_funding',
-        labor_cents: String(laborCents)
+        labor_cents: String(laborCents),
+        fee_cents: String(feeCents)
       }
     })
 

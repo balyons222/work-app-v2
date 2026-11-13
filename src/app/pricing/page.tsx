@@ -46,8 +46,8 @@ export default function PricingPage() {
       const response = await fetch('/api/stripe/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // 2. Change targetRole to tierName to match our backend req.json()
-        body: JSON.stringify({ priceId, tierName: targetRole }), 
+        // The server derives the plan from priceId; targetRole is not sent
+        body: JSON.stringify({ priceId }),
       })
 
       const data = await response.json()

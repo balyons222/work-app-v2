@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
+import { tierForPrice } from '@/src/config/stripePrices'
 
 // 1. Initialize Stripe (Aligned API Version)
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
@@ -226,7 +227,25 @@ export async function POST(req: Request) {
       const userId = session.client_reference_id
       const customerId = session.customer as string
       const subscriptionId = session.subscription as string
-      const tier = session.metadata?.plan_tier || 'contractor'
+
+      // Derive the tier from the price actually paid, never from metadata (which a caller could influence)
+      let tier: string | null = null
+      try {
+        const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 5 })
+        for (const item of lineItems.data) {
+          tier = tierForPrice(item.price?.id)
+          if (tier) break
+        }
+      } catch (err: any) {
+        console.error('Failed to read subscription line items:', err.message)
+        return new NextResponse('Stripe API error', { status: 500 }) // Retry
+      }
+
+      if (!tier) {
+        // Paid for a price we don't recognize: don't grant anything, flag for manual review
+        console.error('❌ Subscription for unknown price — no tier granted', { sessionId: session.id, userId })
+        return new NextResponse('Unknown price', { status: 200 }) // Retrying won't help
+      }
 
       const { error } = await supabaseAdmin
         .from('profiles')
@@ -238,6 +257,40 @@ export async function POST(req: Request) {
         return new NextResponse('Database Error', { status: 500 }) // Forces Stripe retry
       }
       return new NextResponse('Subscription activated successfully', { status: 200 })
+    }
+  }
+
+  // ========================================================
+  // EVENT: SUBSCRIPTION UPDATED
+  // ========================================================
+  else if (event.type === 'customer.subscription.updated') {
+    // Plan switches in the billing portal, payment failures, reactivations
+    const subscription = event.data.object as Stripe.Subscription
+    const customerId = subscription.customer as string
+    let update: Record<string, any> | null = null
+
+    if (subscription.status === 'active' || subscription.status === 'trialing') {
+      const tier = subscription.items.data.map(i => tierForPrice(i.price?.id)).find(Boolean)
+      if (!tier) {
+        console.error('❌ Subscription updated to unknown price — tier unchanged', { subscriptionId: subscription.id })
+      } else {
+        update = { plan_tier: tier, stripe_subscription_id: subscription.id }
+      }
+    } else if (['canceled', 'unpaid', 'incomplete_expired'].includes(subscription.status)) {
+      update = { plan_tier: 'basic', stripe_subscription_id: null }
+    }
+    // past_due / incomplete / paused: leave the plan as-is while Stripe retries payment
+
+    if (update) {
+      const { error } = await supabaseAdmin
+        .from('profiles')
+        .update(update)
+        .eq('stripe_customer_id', customerId)
+
+      if (error) {
+        console.error('❌ Sub update error:', error.message)
+        return new NextResponse('Database Error', { status: 500 }) // Forces Stripe retry
+      }
     }
   }
 
