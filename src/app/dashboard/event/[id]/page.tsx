@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/src/utils/supabase/client'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { sendNotification } from '@/src/utils/notifications'
 import InviteTalentModal from '@/src/components/InviteTalentModal' 
 import ChatWindow from '@/src/components/ChatWindow' 
 import ReleasePayoutButton from '@/src/components/ReleasePayoutButton'
+import LogHoursModal from '@/src/components/LogHoursModal'
 
 const ROLE_CATEGORIES = {
   "Operations": ["General Event Support", "Site Lead", "Site Manager", "Finish Line Lead", "Start Line Lead", "Course Lead", "Vendor Manager", "Project Manager", "Equipment Operator", "Forklift Operator", "Truck Driver (nonCDL)", "Truck Driver (CDL)", "Electrician/Power", "Volunteer Coordinator", "Expo Lead", "Expo Support", "Warehouse Coordinator"],
@@ -17,30 +18,28 @@ const ROLE_CATEGORIES = {
 }
 
 export default function EventManagerPage() {
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [event, setEvent] = useState<any>(null)
   const [jobs, setJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  
   const safeFormatDate = (dateStr: string) => {
-  if (!dateStr) return 'TBD'
-  // The { timeZone: 'UTC' } part prevents the browser from shifting the day backward!
-  return new Date(dateStr).toLocaleDateString('en-US', { timeZone: 'UTC' })
-}
-  // NEW: State for tracking Organizer's tier
+    if (!dateStr) return 'TBD'
+    return new Date(dateStr).toLocaleDateString('en-US', { timeZone: 'UTC' })
+  }
+  
   const [userTier, setUserTier] = useState<string>('basic')
    
-  // EVENT DETAILS STATE
   const [isEditingEvent, setIsEditingEvent] = useState(false)
   const [eventFormData, setEventFormData] = useState({
     title: '', location: '', event_date: '', budget: '', 
     description: '', website: '', poc_name: '', poc_phone: '', visibility: 'public'
   })
    
-  // MODAL STATES
   const [inviteModalData, setInviteModalData] = useState<{ open: boolean, jobId?: string, jobTitle?: string }>({ open: false })
   const [showJobForm, setShowJobForm] = useState(false)
   const [editingJobId, setEditingJobId] = useState<string | null>(null)
 
-  // JOB FORM STATE
   const [selectedRole, setSelectedRole] = useState('')
   const [rate, setRate] = useState('')
   const [rateType, setRateType] = useState('flat')
@@ -49,120 +48,126 @@ export default function EventManagerPage() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
 
-  // REVIEW STATE
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
   const [reviewTarget, setReviewTarget] = useState<any>(null) 
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState('')
 
-  // CHAT STATE
   const [activeChat, setActiveChat] = useState<{ id: string, name: string } | null>(null)
-
+  const [loggingHoursApp, setLoggingHoursApp] = useState<any>(null)
+  const [isFunding, setIsFunding] = useState<string | null>(null) // Tracks which app is currently funding to disable double-clicks
+  
   const supabase = createClient()
   const params = useParams()
   const searchParams = useSearchParams()
+  const pathname = usePathname()
   const router = useRouter()
   const eventId = params?.id as string
 
   useEffect(() => {
     loadEventData()
     
-    // Check if returning from a successful Stripe Escrow payment
+    // FIX: Stripe Webhook Race Condition Polling
     if (searchParams.get('funded') === 'true') {
-      toast.success('Payment received! Escrow funds are securely held.', { duration: 5000 })
+      const toastId = toast.loading('Verifying escrow payment...')
+      
+      let attempts = 0
+      const pollInterval = setInterval(async () => {
+        attempts++
+        const { data } = await supabase.from('applications').select('funding_status').eq('event_id', eventId).eq('funding_status', 'funded').limit(1)
+        
+        if ((data && data.length > 0) || attempts > 5) {
+          clearInterval(pollInterval)
+          toast.success('Payment received! Escrow funds are securely held.', { id: toastId, duration: 5000 })
+          loadEventData()
+          router.replace(pathname || `/dashboard/events/${eventId}`) // Strip URL params
+        }
+      }, 2000)
+      
+      return () => clearInterval(pollInterval)
+
     } else if (searchParams.get('funded') === 'cancelled') {
       toast.error('Escrow checkout was cancelled.')
+      router.replace(pathname || `/dashboard/events/${eventId}`)
     }
   }, [eventId])
 
  async function loadEventData() {
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (user) {
-      const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', user.id).single()
-      if (profile) {
-        setUserTier(profile.plan_tier || 'basic')
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
       }
+      setCurrentUserId(user.id)
+
+      const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', user.id).single()
+      if (profile) setUserTier(profile.plan_tier || 'basic')
+
+      const { data: eventData, error: eventError } = await supabase
+        .from('events')
+        .select('*')
+        .eq('id', eventId)
+        .single()
+
+      if (eventError || !eventData) throw new Error('Event not found')
+
+      // FIX: Strict Ownership Check
+      if (eventData.organizer_id !== user.id) {
+        toast.error('Unauthorized access.')
+        router.push('/dashboard')
+        return
+      }
+
+      setEvent(eventData)
+      setEventFormData({
+        title: eventData.title || '', location: eventData.location || '', event_date: eventData.event_date || '',
+        budget: eventData.budget || '', description: eventData.description || '', website: eventData.website || '',
+        poc_name: eventData.poc_name || '', poc_phone: eventData.poc_phone || '', visibility: eventData.visibility || 'public'
+      })
+
+      // FIX: Added payouts_enabled to query
+      const { data: jobsData, error: jobsError } = await supabase
+        .from('jobs')
+        .select(`
+          *,
+          applications (
+            id, status, applicant_id, payment_status, payment_method, funding_status, actual_hours,
+            profiles ( full_name, avatar_url, role, payouts_enabled )
+          ),
+          reviews (id, reviewee_id, rating) 
+        `)
+        .eq('event_id', eventId)
+        .order('created_at', { ascending: false })
+
+      if (jobsError) throw new Error(jobsError.message)
+
+      setJobs(jobsData || [])
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to load event data')
+    } finally {
+      setLoading(false)
     }
-
-    const { data: eventData, error: eventError } = await supabase
-      .from('events')
-      .select('*')
-      .eq('id', eventId)
-      .single()
-
-    if (eventError) {
-      toast.error('Event not found')
-      router.push('/dashboard')
-      return
-    }
-    setEvent(eventData)
-    
-    setEventFormData({
-      title: eventData.title || '',
-      location: eventData.location || '',
-      event_date: eventData.event_date || '',
-      budget: eventData.budget || '',
-      description: eventData.description || '',
-      website: eventData.website || '',
-      poc_name: eventData.poc_name || '',
-      poc_phone: eventData.poc_phone || '',
-      visibility: eventData.visibility || 'public'
-    })
-
-    const { data: jobsData, error: jobsError } = await supabase
-      .from('jobs')
-      .select(`
-        *,
-        applications (
-          id, status, applicant_id, payment_status, payment_method, funding_status,
-          profiles ( full_name, avatar_url, role )
-        ),
-        reviews (id, reviewee_id, rating) 
-      `)
-      .eq('event_id', eventId)
-      .order('created_at', { ascending: false })
-
-    if (jobsError) {
-      console.error('🚨 Error fetching jobs/roles:', jobsError)
-      toast.error('Could not load event roles: ' + jobsError.message)
-    }
-
-    setJobs(jobsData || [])
-    setLoading(false)
   }
 
   const handleOpenChat = async (jobId: string, applicationId: string, workerId: string, workerName: string) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!currentUserId) return
 
-    const { data: existingChat } = await supabase
-      .from('conversations')
-      .select('id')
-      .eq('application_id', applicationId)
-      .maybeSingle()
+    const { data: existingChat } = await supabase.from('conversations').select('id').eq('application_id', applicationId).maybeSingle()
 
     if (existingChat) {
       setActiveChat({ id: existingChat.id, name: workerName })
     } else {
       const { data: newChat, error } = await supabase
         .from('conversations')
-        .insert({
-          job_id: jobId,
-          application_id: applicationId,
-          organizer_id: user.id,
-          worker_id: workerId
-        })
-        .select()
-        .single()
+        .insert({ job_id: jobId, application_id: applicationId, organizer_id: currentUserId, worker_id: workerId })
+        .select().single()
 
       if (error) {
          if (error.code === '23505') {
            const { data: retryChat } = await supabase.from('conversations').select('id').eq('application_id', applicationId).single()
            if (retryChat) setActiveChat({ id: retryChat.id, name: workerName })
-         } else {
-           toast.error('Failed to start chat')
-         }
+         } else toast.error('Failed to start chat')
       } else {
         setActiveChat({ id: newChat.id, name: workerName })
       }
@@ -175,147 +180,98 @@ export default function EventManagerPage() {
 
   const handleUpdateEvent = async (e: React.FormEvent) => {
     e.preventDefault()
-    const { error } = await supabase
-      .from('events')
-      .update({
-        title: eventFormData.title,
-        location: eventFormData.location,
-        event_date: eventFormData.event_date,
-        budget: parseFloat(eventFormData.budget),
-        description: eventFormData.description,
-        website: eventFormData.website,
-        poc_name: eventFormData.poc_name,
-        poc_phone: eventFormData.poc_phone,
-        visibility: eventFormData.visibility
-      })
-      .eq('id', eventId)
+    const { error } = await supabase.from('events').update({
+        title: eventFormData.title, location: eventFormData.location, event_date: eventFormData.event_date,
+        budget: parseFloat(eventFormData.budget), description: eventFormData.description, website: eventFormData.website,
+        poc_name: eventFormData.poc_name, poc_phone: eventFormData.poc_phone, visibility: eventFormData.visibility
+      }).eq('id', eventId)
 
-    if (error) {
-      toast.error("Failed to update event")
-    } else {
-      toast.success("Event updated!")
-      setIsEditingEvent(false)
-      loadEventData()
-    }
+    if (error) toast.error("Failed to update event")
+    else { toast.success("Event updated!"); setIsEditingEvent(false); loadEventData() }
   }
 
   const handleHireAndFund = async (appId: string) => {
+    setIsFunding(appId)
     const toastId = toast.loading('Redirecting to Stripe checkout...')
     try {
       const res = await fetch('/api/stripe/fund-job', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ applicationId: appId })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ applicationId: appId })
       })
 
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to start funding session')
 
-      if (data.url) {
-        window.location.href = data.url
-      }
+      if (data.url) window.location.href = data.url
+      else toast.dismiss(toastId) // FIX: Clear toast if no URL returned
     } catch (err: any) {
       toast.error(err.message, { id: toastId })
+      setIsFunding(null)
     }
   }
 
   const handleEditClick = (job: any) => {
-    setEditingJobId(job.id)
-    setSelectedRole(job.title)
-    setRate(job.rate.toString())
-    setJobDescription(job.description || '')
-    setStartDate(job.start_date || '')
-    setEndDate(job.end_date || '')
-    setRateType(job.rate_type || 'flat')
-    setEstimatedHours(job.estimated_hours ? job.estimated_hours.toString() : '')
-    setShowJobForm(true)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setEditingJobId(job.id); setSelectedRole(job.title); setRate(job.rate.toString());
+    setJobDescription(job.description || ''); setStartDate(job.start_date || ''); setEndDate(job.end_date || '');
+    setRateType(job.rate_type || 'flat'); setEstimatedHours(job.estimated_hours ? job.estimated_hours.toString() : '');
+    setShowJobForm(true); window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const resetForm = () => {
     setEditingJobId(null); setSelectedRole(''); setRate(''); setJobDescription('');
-    setStartDate(''); setEndDate(''); setRateType('flat'); setEstimatedHours('');
-    setShowJobForm(false)
+    setStartDate(''); setEndDate(''); setRateType('flat'); setEstimatedHours(''); setShowJobForm(false)
   }
 
   const handleSaveJob = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedRole) return toast.error('Please select a role')
     
-    // ==========================================
-    // SAAS LIMIT: 5 ROLES PER EVENT (BASIC)
-    // ONLY check if they are NOT editing an existing job
-    // ==========================================
-   if (!editingJobId && userTier !== 'organizer_pro') {
+    // FIX: Basic Validation
+    if (new Date(endDate) < new Date(startDate)) return toast.error('End date cannot be before start date')
+    if (parseFloat(rate) <= 0) return toast.error('Rate must be greater than 0')
+    if (rateType === 'hourly' && parseFloat(estimatedHours) <= 0) return toast.error('Please enter valid estimated hours')
+    
+   if (!editingJobId && userTier !== 'organizer_pro' && userTier !== 'organizer') {
       const limitToastId = toast.loading('Checking event limits...')
-      
-      const { count, error: countError } = await supabase
-        .from('jobs')
-        .select('*', { count: 'exact', head: true })
-        .eq('event_id', eventId)
+      const { count, error: countError } = await supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('event_id', eventId)
 
-      if (countError) {
-        toast.dismiss(limitToastId)
-        toast.error('Could not verify event limits.')
-        return
-      }
-
+      if (countError) { toast.dismiss(limitToastId); return toast.error('Could not verify event limits.') }
       if (count !== null && count >= 5) {
-        toast.dismiss(limitToastId)
-        toast.error('Basic plan is limited to 5 roles per event! Upgrade to Organizer Pro to add more.')
-        router.push('/pricing')
-        return // 🛑 Stops the function here
+        toast.dismiss(limitToastId); toast.error('Basic plan is limited to 5 roles per event! Upgrade to Organizer Pro to add more.')
+        return router.push('/pricing')
       }
-      
       toast.dismiss(limitToastId)
     }
-    // ==========================================
 
-    const { data: { user } } = await supabase.auth.getUser()
     const jobData = {
-      event_id: eventId,
-      organizer_id: user?.id,
-      title: selectedRole,
-      rate: parseFloat(rate),
-      description: jobDescription,
-      start_date: startDate,
-      end_date: endDate,
-      status: 'open',
-      rate_type: rateType,
-      estimated_hours: rateType === 'hourly' ? parseFloat(estimatedHours) : 0
+      event_id: eventId, organizer_id: currentUserId, title: selectedRole, rate: parseFloat(rate),
+      description: jobDescription, start_date: startDate, end_date: endDate, status: 'open',
+      rate_type: rateType, estimated_hours: rateType === 'hourly' ? parseFloat(estimatedHours) : 0
     }
     
-    let error;
-    if (editingJobId) {
-      const { error: updateError } = await supabase.from('jobs').update(jobData).eq('id', editingJobId)
-      error = updateError
-    } else {
-      const { error: insertError } = await supabase.from('jobs').insert(jobData)
-      error = insertError
-    }
+    const { error } = editingJobId 
+      ? await supabase.from('jobs').update(jobData).eq('id', editingJobId)
+      : await supabase.from('jobs').insert(jobData)
     
     if (error) toast.error(error.message)
-    else {
-      toast.success(editingJobId ? 'Job Updated!' : 'Job Added!')
-      resetForm()
-      loadEventData() 
-    }
+    else { toast.success(editingJobId ? 'Job Updated!' : 'Job Added!'); resetForm(); loadEventData() }
   }
 
   const handleAppStatus = async (appId: string, newStatus: string) => {
     const { error } = await supabase.from('applications').update({ status: newStatus }).eq('id', appId)
-    if (!error) {
-      toast.success(`Applicant ${newStatus}`)
-      loadEventData() 
-    } else {
-      toast.error('Update failed')
-    }
+    if (!error) { toast.success(`Applicant ${newStatus}`); loadEventData() } 
+    else toast.error('Update failed')
   }
 
   const handleDeleteJob = async (jobId: string) => {
+    // FIX: Block deletion of orphaned escrow funds
+    const job = jobs.find(j => j.id === jobId)
+    const hasFundedApps = job?.applications?.some((a: any) => a.funding_status === 'funded' && a.payment_status !== 'paid')
+    if (hasFundedApps) return toast.error('Release or refund escrow before deleting this role.')
+
     if (!confirm('Are you sure you want to delete this job?')) return
     const { error } = await supabase.from('jobs').delete().eq('id', jobId)
-    if (!error) { toast.success('Job removed'); loadEventData(); }
+    if (!error) { toast.success('Job removed'); loadEventData() }
+    else toast.error(error.message)
   }
 
   const openReviewModal = (app: any, job: any) => {
@@ -324,12 +280,10 @@ export default function EventManagerPage() {
   }
 
   const submitReview = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const { error } = await supabase.from('reviews').insert({ reviewer_id: user.id, reviewee_id: reviewTarget.userId, job_id: reviewTarget.jobId, rating, comment })
-    if (error) {
-      toast.error(error.message)
-    } else {
+    if (!currentUserId) return
+    const { error } = await supabase.from('reviews').insert({ reviewer_id: currentUserId, reviewee_id: reviewTarget.userId, job_id: reviewTarget.jobId, rating, comment })
+    if (error) toast.error(error.message)
+    else {
       toast.success('Review Submitted!')
       await sendNotification({ userId: reviewTarget.userId, title: "New Review! ⭐", message: `New review received!`, link: `/profile/${reviewTarget.userId}`, type: "success" })
       setReviewModalOpen(false); loadEventData()
@@ -337,8 +291,9 @@ export default function EventManagerPage() {
   }
 
   if (loading) return <div className="p-20 text-center font-bold text-slate-400">Loading Event...</div>
+  if (!event) return null // Caught by error handler
 
-  const totalBudget = event?.budget || 0
+  const totalBudget = event.budget || 0
   const allocatedBudget = jobs.reduce((sum, job) => sum + (job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate), 0)
   const remainingBudget = totalBudget - allocatedBudget
   const percentUsed = Math.min((allocatedBudget / (totalBudget || 1)) * 100, 100)
@@ -390,13 +345,56 @@ export default function EventManagerPage() {
                 <h2 className="text-xl font-black text-slate-900">Edit Event</h2>
                 <button type="button" onClick={() => setIsEditingEvent(false)} className="text-sm font-bold text-slate-400">Cancel</button>
               </div>
-              <div className="grid md:grid-cols-2 gap-6">
-                <input name="title" value={eventFormData.title} onChange={handleEventChange} placeholder="Title" className="p-2 border rounded-lg font-bold" />
-                <input name="location" value={eventFormData.location} onChange={handleEventChange} placeholder="Location" className="p-2 border rounded-lg" />
-                <input type="date" name="event_date" value={eventFormData.event_date} onChange={handleEventChange} className="p-2 border rounded-lg" />
-                <input type="number" name="budget" value={eventFormData.budget} onChange={handleEventChange} placeholder="Budget" className="p-2 border rounded-lg" />
+              
+              <div className="grid md:grid-cols-2 gap-6 mb-6">
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Title</label>
+                  <input name="title" value={eventFormData.title} onChange={handleEventChange} className="w-full p-3 border rounded-xl font-bold" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Location</label>
+                  <input name="location" value={eventFormData.location} onChange={handleEventChange} className="w-full p-3 border rounded-xl" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Date</label>
+                  <input type="date" name="event_date" value={eventFormData.event_date} onChange={handleEventChange} className="w-full p-3 border rounded-xl" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Budget ($)</label>
+                  <input type="number" name="budget" value={eventFormData.budget} onChange={handleEventChange} className="w-full p-3 border rounded-xl" />
+                </div>
               </div>
-              <button type="submit" className="w-full bg-black text-white font-bold py-3 rounded-xl">Save Changes</button>
+
+              {/* FIX: Missing Edit Fields Added */}
+              <div className="space-y-6 mb-6">
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Description</label>
+                  <textarea name="description" value={eventFormData.description} onChange={handleEventChange} className="w-full p-3 border rounded-xl h-24" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Official Website</label>
+                  <input type="url" name="website" value={eventFormData.website} onChange={handleEventChange} className="w-full p-3 border rounded-xl" />
+                </div>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Point of Contact Name</label>
+                    <input name="poc_name" value={eventFormData.poc_name} onChange={handleEventChange} className="w-full p-3 border rounded-xl" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Point of Contact Phone</label>
+                    <input name="poc_phone" value={eventFormData.poc_phone} onChange={handleEventChange} className="w-full p-3 border rounded-xl" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Visibility</label>
+                  <select name="visibility" value={eventFormData.visibility} onChange={handleEventChange} className="w-full p-3 border rounded-xl">
+                    <option value="public">Public (Visible on Job Board)</option>
+                    <option value="private">Private (Invite Only)</option>
+                  </select>
+                </div>
+              </div>
+
+              <button type="submit" className="w-full bg-black text-white font-bold py-4 rounded-xl">Save Changes</button>
             </form>
           )}
         </div>
@@ -420,12 +418,7 @@ export default function EventManagerPage() {
                 ))}
               </select>
               
-              <textarea 
-                value={jobDescription} 
-                onChange={(e) => setJobDescription(e.target.value)} 
-                placeholder="Job Description & Requirements" 
-                className="w-full p-3 bg-slate-50 border rounded-xl h-24" 
-              />
+              <textarea value={jobDescription} onChange={(e) => setJobDescription(e.target.value)} placeholder="Job Description & Requirements" className="w-full p-3 bg-slate-50 border rounded-xl h-24" />
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col">
@@ -482,13 +475,13 @@ export default function EventManagerPage() {
                       <h3 className="text-xl font-black text-primary">{job.title}</h3>
                       <div className="flex items-center gap-4 mt-1 text-sm text-slate-600">
                           <span className="font-bold bg-white border px-2 py-0.5 rounded">
-  {safeFormatDate(job.start_date)} 
-  {job.end_date && job.end_date !== job.start_date ? ` - ${safeFormatDate(job.end_date)}` : ''}
-</span>
+                            {safeFormatDate(job.start_date)} 
+                            {job.end_date && job.end_date !== job.start_date ? ` - ${safeFormatDate(job.end_date)}` : ''}
+                          </span>
                           <span className="text-slate-400">|</span>
                           <span className="font-bold text-green-600">
                             ${job.rate}/{job.rate_type === 'hourly' ? 'hr' : 'flat'}
-                            {job.rate_type === 'hourly' && <span className="text-slate-400 font-normal text-xs ml-1">(Est. Total: ${laborCost})</span>}
+                            {job.rate_type === 'hourly' && <span className="text-slate-400 font-normal text-xs ml-1">(Est. Total: ${laborCost.toFixed(2)})</span>}
                           </span>
                       </div>
                       {job.description && <p className="text-xs text-slate-500 mt-2 max-w-xl">{job.description}</p>}
@@ -505,11 +498,15 @@ export default function EventManagerPage() {
                     {job.applications?.length === 0 ? (
                         <p className="text-center text-sm text-slate-300 italic py-2">No applicants yet.</p>
                     ) : (
-                        job.applications?.map((app: any) => (
+                        job.applications?.map((app: any) => {
+                          const hasBeenReviewed = job.reviews?.some((r: any) => r.reviewee_id === app.applicant_id)
+                          const canBePaid = app.profiles?.payouts_enabled
+
+                          return (
                           <div key={app.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-white border rounded-xl shadow-sm hover:shadow-md transition-shadow gap-4">
                             <div className="flex items-center gap-3">
                               <div className="h-10 w-10 bg-slate-200 rounded-full overflow-hidden shrink-0">
-                                {app.profiles?.avatar_url && <img src={app.profiles.avatar_url} className="object-cover h-full w-full" />}
+                                {app.profiles?.avatar_url && <img src={app.profiles.avatar_url} alt={`${app.profiles.full_name}'s avatar`} className="object-cover h-full w-full" />}
                               </div>
                               <div>
                                 <Link href={`/profile/${app.applicant_id}`} className="font-bold hover:underline text-primary">{app.profiles?.full_name}</Link>
@@ -528,42 +525,42 @@ export default function EventManagerPage() {
                               {/* 1. Pending: Offer Hire & Fund with Price Breakdown */}
                               {app.status === 'pending' && (
                                 <div className="flex items-center gap-2">
-                                  <button 
-                                    onClick={() => handleAppStatus(app.id, 'rejected')} 
-                                    className="px-3 py-1.5 text-xs font-bold text-red-500 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
-                                  >
+                                  <button onClick={() => handleAppStatus(app.id, 'rejected')} className="px-3 py-1.5 text-xs font-bold text-red-500 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
                                     Decline
                                   </button>
+                                  
+                                  {/* FIX: Gated button based on payouts_enabled */}
                                   <button 
                                     onClick={() => handleHireAndFund(app.id)} 
-                                    className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
-                                    title={`Labor: $${laborCost} + 10% Fee: $${platformFee}`}
+                                    disabled={!canBePaid || isFunding === app.id}
+                                    className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title={!canBePaid ? 'This contractor hasn’t set up their payouts yet.' : `Labor: $${laborCost.toFixed(2)} + 10% Fee: $${platformFee.toFixed(2)}`}
                                   >
-                                    Hire & Fund Escrow (${totalToFund.toFixed(2)})
+                                    {isFunding === app.id ? 'Processing...' : `Hire & Fund Escrow ($${totalToFund.toFixed(2)})`}
                                   </button>
                                 </div>
                               )}
                               
-                     {/* 2. Approved & Escrow Funded: Show Locked Badge & Release Button */}
-{app.status === 'approved' && app.funding_status === 'funded' && app.payment_status !== 'paid' && (
-  <div className="flex items-center gap-2">
-    <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
-      🔒 In Escrow
-    </span>
-<ReleasePayoutButton 
-  applicationId={app.id} 
-  contractorName={app.profiles?.full_name || 'Contractor'} 
-  rate={laborCost} 
-  isPaid={false} 
-/>  </div>
-)}
+                              {/* 2. Approved & Escrow Funded: Show Locked Badge & Action Buttons */}
+                              {app.status === 'approved' && app.funding_status === 'funded' && app.payment_status !== 'paid' && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
+                                    🔒 In Escrow
+                                  </span>
+                                  
+                                  {job.rate_type === 'hourly' && (app.actual_hours === null || app.actual_hours === undefined) ? (
+                                    <button onClick={() => setLoggingHoursApp({ app, job })} className="bg-slate-900 text-white hover:bg-slate-800 px-4 py-2 rounded-lg text-sm font-bold transition-colors">
+                                      ⏱️ Log Hours
+                                    </button>
+                                  ) : (
+                                    <ReleasePayoutButton applicationId={app.id} contractorName={app.profiles?.full_name || 'Contractor'} rate={job.rate_type === 'hourly' ? (app.actual_hours * job.rate) : job.rate} isPaid={false} />
+                                  )}
+                                </div>
+                              )}
 
                               {/* 3. Approved but Unfunded Edge Case */}
                               {app.status === 'approved' && app.funding_status !== 'funded' && app.payment_status !== 'paid' && (
-                                <button 
-                                  onClick={() => handleHireAndFund(app.id)} 
-                                  className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100"
-                                >
+                                <button onClick={() => handleHireAndFund(app.id)} disabled={!canBePaid || isFunding === app.id} className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 disabled:opacity-50">
                                   ⚠️ Fund Escrow (${totalToFund.toFixed(2)})
                                 </button>
                               )}
@@ -574,15 +571,18 @@ export default function EventManagerPage() {
                                   <span className="px-3 py-1.5 text-xs font-bold text-slate-400 bg-slate-100 rounded-lg border border-slate-200">
                                     ✓ Paid
                                   </span>
-                                  <button onClick={() => openReviewModal(app, job)} className="px-3 py-1.5 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100">
-                                    Rate
-                                  </button>
+                                  {/* FIX: Hide Rate button if review exists */}
+                                  {!hasBeenReviewed && (
+                                    <button onClick={() => openReviewModal(app, job)} className="px-3 py-1.5 text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100">
+                                      Rate
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </div>
                           </div>
-                        ))
-                    )}
+                        )}
+                      )}
                   </div>
                 </div>
             )
@@ -613,12 +613,22 @@ export default function EventManagerPage() {
         <InviteTalentModal eventId={eventId} jobId={inviteModalData.jobId} jobTitle={inviteModalData.jobTitle} onClose={() => setInviteModalData({ open: false })} />
       )}
 
-      {activeChat && event && (
+      {activeChat && currentUserId && (
         <ChatWindow 
           conversationId={activeChat.id}
-          currentUserId={event.organizer_id} 
+          currentUserId={currentUserId} 
           otherUserName={activeChat.name}
           onClose={() => setActiveChat(null)}
+        />
+      )}
+
+      {loggingHoursApp && (
+        <LogHoursModal 
+          applicationId={loggingHoursApp.app.id}
+          contractorName={loggingHoursApp.app.profiles?.full_name}
+          hourlyRate={loggingHoursApp.job.rate}
+          estimatedHours={loggingHoursApp.job.estimated_hours}
+          onClose={() => setLoggingHoursApp(null)}
         />
       )}
     </div>
