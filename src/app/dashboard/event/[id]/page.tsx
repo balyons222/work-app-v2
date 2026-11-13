@@ -550,8 +550,12 @@ export default function EventManagerPage() {
     <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
       🔒 In Escrow
     </span>
-    <ReleasePayoutButton applicationId={app.id} />
-  </div>
+<ReleasePayoutButton 
+  applicationId={app.id} 
+  contractorName={app.profiles?.full_name || 'Contractor'} 
+  rate={laborCost} 
+  isPaid={false} 
+/>  </div>
 )}
 
                               {/* 3. Approved but Unfunded Edge Case */}
