@@ -10,6 +10,7 @@ import InviteTalentModal from '@/src/components/InviteTalentModal'
 import ChatWindow from '@/src/components/ChatWindow' 
 import ReleasePayoutButton from '@/src/components/ReleasePayoutButton'
 import LogHoursModal from '@/src/components/LogHoursModal'
+import { platformFeeRate, feePercentLabel } from '@/src/config/platformFees'
 
 const ROLE_CATEGORIES = {
   "Operations": ["General Event Support", "Site Lead", "Site Manager", "Finish Line Lead", "Start Line Lead", "Course Lead", "Vendor Manager", "Project Manager", "Equipment Operator", "Forklift Operator", "Truck Driver (nonCDL)", "Truck Driver (CDL)", "Electrician/Power", "Volunteer Coordinator", "Expo Lead", "Expo Support", "Warehouse Coordinator"],
@@ -508,7 +509,7 @@ export default function EventManagerPage() {
         <div className="space-y-6">
           {jobs.map(job => {
             const laborCost = job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate
-            const platformFee = laborCost * 0.10
+            const platformFee = Math.round(laborCost * 100 * platformFeeRate(userTier)) / 100 // Matches fund-job (Basic 15%, Pro Hub 10%)
             const totalToFund = laborCost + platformFee
 
             return (
@@ -577,7 +578,7 @@ export default function EventManagerPage() {
                                     onClick={() => handleHireAndFund(app.id)} 
                                     disabled={!canBePaid || isFunding === app.id}
                                     className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title={!canBePaid ? 'This contractor hasn’t set up their payouts yet.' : `Labor: $${laborCost.toFixed(2)} + 10% Fee: $${platformFee.toFixed(2)}`}
+                                    title={!canBePaid ? 'This contractor hasn’t set up their payouts yet.' : `Labor: $${laborCost.toFixed(2)} + ${feePercentLabel(userTier)} Platform Fee: $${platformFee.toFixed(2)}`}
                                   >
                                     {isFunding === app.id ? 'Processing...' : `Hire & Fund Escrow ($${totalToFund.toFixed(2)})`}
                                   </button>
