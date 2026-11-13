@@ -261,6 +261,40 @@ export async function POST(req: Request) {
   }
 
   // ========================================================
+  // EVENT: SUBSCRIPTION UPDATED
+  // ========================================================
+  else if (event.type === 'customer.subscription.updated') {
+    // Plan switches in the billing portal, payment failures, reactivations
+    const subscription = event.data.object as Stripe.Subscription
+    const customerId = subscription.customer as string
+    let update: Record<string, any> | null = null
+
+    if (subscription.status === 'active' || subscription.status === 'trialing') {
+      const tier = subscription.items.data.map(i => tierForPrice(i.price?.id)).find(Boolean)
+      if (!tier) {
+        console.error('❌ Subscription updated to unknown price — tier unchanged', { subscriptionId: subscription.id })
+      } else {
+        update = { plan_tier: tier, stripe_subscription_id: subscription.id }
+      }
+    } else if (['canceled', 'unpaid', 'incomplete_expired'].includes(subscription.status)) {
+      update = { plan_tier: 'basic', stripe_subscription_id: null }
+    }
+    // past_due / incomplete / paused: leave the plan as-is while Stripe retries payment
+
+    if (update) {
+      const { error } = await supabaseAdmin
+        .from('profiles')
+        .update(update)
+        .eq('stripe_customer_id', customerId)
+
+      if (error) {
+        console.error('❌ Sub update error:', error.message)
+        return new NextResponse('Database Error', { status: 500 }) // Forces Stripe retry
+      }
+    }
+  }
+
+  // ========================================================
   // EVENT: SUBSCRIPTION CANCELED
   // ========================================================
   else if (event.type === 'customer.subscription.deleted') {
