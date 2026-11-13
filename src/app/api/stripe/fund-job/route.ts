@@ -118,6 +118,7 @@ export async function POST(req: Request) {
         organizer_id: user.id,
         contractor_id: contractor.id,
         type: 'job_escrow_funding'
+        labor_cents: String(laborCents)
       }
     })
 

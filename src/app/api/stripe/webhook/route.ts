@@ -75,10 +75,11 @@ export async function POST(req: Request) {
           stripe_payment_intent_id: paymentIntentId,
           stripe_charge_id: chargeId,
           funded_amount_cents: session.amount_total,
+          funded_labor_cents: parseInt(session.metadata.labor_cents || '0', 10),
         })
         .eq('id', applicationId)
         .or('funding_status.is.null,funding_status.neq.funded') // Matches NULL or anything not 'funded'
-        .select('id, applicant_id, jobs(title, organizer_id, events(title))')
+        .select('id, applicant_id, jobs(id, title, organizer_id, events(title))')
 
       if (error) {
         console.error('Database update error:', error.message)
@@ -90,71 +91,93 @@ export async function POST(req: Request) {
         return new NextResponse('Already processed', { status: 200 })
       }
 
-      // FIX: Notifications actually fire
-      try {
-        const { Resend } = await import('resend')
-        const resend = new Resend(process.env.RESEND_API_KEY)
-        
-        const appData = updated[0]
-        const applicantId = appData.applicant_id
-        const organizerId = appData.jobs?.organizer_id
-        const jobTitle = appData.jobs?.title || 'the job'
-        const eventTitle = appData.jobs?.events?.title || 'the event'
-
-        // Get applicant details
-        const { data: profile } = await supabaseAdmin
-          .from('profiles')
-          .select('email, full_name')
-          .eq('id', applicantId)
-          .single()
-
-        if (profile?.email) {
-          await resend.emails.send({
-            from: 'FxD Events <notifications@fxdevents.com>', // Ensure this domain is verified in Resend
-            to: profile.email,
-            subject: `You're Hired! ${jobTitle} for ${eventTitle}`,
-            html: `
-              <h2>Great news, ${profile.full_name}!</h2>
-              <p>You have been officially hired for <strong>${jobTitle}</strong> at <strong>${eventTitle}</strong>.</p>
-              <p>The organizer has successfully funded the escrow for this shift, and the money is locked in.</p>
-              <p><a href="${process.env.NEXT_PUBLIC_SITE_URL}/dashboard">Log in to view details</a></p>
-            `
-          })
-        }
-
-        // Setup Chat Conversation
-        if (organizerId) {
-          const { data: existingChat } = await supabaseAdmin
-            .from('conversations')
-            .select('id')
-            .eq('application_id', applicationId)
-            .maybeSingle()
-
-          let chatId = existingChat?.id
-
-          if (!chatId) {
-            const { data: newChat } = await supabaseAdmin.from('conversations').insert({
-              job_id: appData.jobs.id,
-              application_id: applicationId,
-              organizer_id: organizerId,
-              worker_id: applicantId
-            }).select('id').single()
+ // 5. Send Notifications ONLY on the first successful pass
+          try {
+            // Lazy load Resend here so it only spins up if we actually need it
+            const { Resend } = await import('resend')
+            const resend = new Resend(process.env.RESEND_API_KEY)
             
-            chatId = newChat?.id
-          }
+            const appData = updated[0]
+            const applicantId = appData.applicant_id
+            const organizerId = appData.jobs?.organizer_id
+            const jobId = appData.jobs?.id
+            const jobTitle = appData.jobs?.title || 'a new role'
+            const eventTitle = appData.jobs?.events?.title || 'an upcoming event'
 
-          if (chatId) {
-            await supabaseAdmin.from('messages').insert({
-              conversation_id: chatId,
-              sender_id: organizerId, // Sent automatically on behalf of the organizer
-              content: `Hi! You are officially hired and escrow has been funded. Let me know if you have any questions before the event!`
-            })
-          }
-        }
+            // Fetch the contractor's profile for the email
+            const { data: profile } = await supabaseAdmin
+              .from('profiles')
+              .select('email, full_name')
+              .eq('id', applicantId)
+              .single()
 
-      } catch (notifErr: any) {
-        console.error('Notification error:', notifErr.message)
-      }
+            // A. Send the "You're Hired" Email
+            if (profile?.email) {
+              await resend.emails.send({
+                // Ensure this exact domain is verified in your Resend dashboard
+                from: 'FxD Events <notifications@fxdevents.com>', 
+                to: profile.email,
+                subject: `You're Hired! ${jobTitle} for ${eventTitle}`,
+                html: `
+                  <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; color: #333;">
+                    <h2>Great news, ${profile.full_name}!</h2>
+                    <p>You have been officially hired for <strong>${jobTitle}</strong> at <strong>${eventTitle}</strong>.</p>
+                    <p>The organizer has successfully funded the escrow for this shift, and the money is securely locked in.</p>
+                    <p style="margin-top: 32px;">
+                      <a href="${process.env.NEXT_PUBLIC_SITE_URL}/dashboard" style="background-color: #000; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+                        View Details & Chat
+                      </a>
+                    </p>
+                  </div>
+                `
+              })
+            }
+
+            // B. Setup the Automated Chat Message
+            if (organizerId && jobId) {
+              // 1. Check if a conversation already exists for this application
+              const { data: existingChat } = await supabaseAdmin
+                .from('conversations')
+                .select('id')
+                .eq('application_id', applicationId)
+                .maybeSingle()
+
+              let chatId = existingChat?.id
+
+              // 2. If no conversation exists, create one
+              if (!chatId) {
+                const { data: newChat, error: chatError } = await supabaseAdmin
+                  .from('conversations')
+                  .insert({
+                    job_id: jobId,
+                    application_id: applicationId,
+                    organizer_id: organizerId,
+                    worker_id: applicantId
+                  })
+                  .select('id')
+                  .single()
+                
+                if (chatError) throw new Error(`Chat creation failed: ${chatError.message}`)
+                chatId = newChat?.id
+              }
+
+              // 3. Insert the automated welcome message on behalf of the organizer
+              if (chatId) {
+                await supabaseAdmin
+                  .from('messages')
+                  .insert({
+                    conversation_id: chatId,
+                    sender_id: organizerId, 
+                    content: `Hi! You are officially hired and the escrow has been funded for this shift. Let me know if you have any questions before the event! 🚀`
+                  })
+              }
+            }
+
+          } catch (notifErr: any) {
+            // We log this but DO NOT return a 500. The money moved and the DB updated.
+            // If we return 500, Stripe will retry the webhook and duplicate the DB operations.
+            console.error('Notification error:', notifErr.message)
+          }
     }
 
     // SCENARIO B: USER BUYING PRO SUBSCRIPTION
