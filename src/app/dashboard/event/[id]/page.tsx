@@ -68,28 +68,47 @@ export default function EventManagerPage() {
     loadEventData()
     
     // FIX: Stripe Webhook Race Condition Polling
-    if (searchParams.get('funded') === 'true') {
+    const fundedParam = searchParams.get('funded')
+    const cleanPath = pathname || `/dashboard/event/${eventId}`
+
+    if (fundedParam === 'true') {
       const toastId = toast.loading('Verifying escrow payment...')
-      
+
+      // Poll the specific application that was just funded (stored before the Stripe redirect).
+      // Previously this matched ANY funded app on the event, so it "succeeded" instantly once one existed.
+      let pendingAppId: string | null = null
+      try { pendingAppId = sessionStorage.getItem('pendingFundAppId') } catch {}
+
       let attempts = 0
       const pollInterval = setInterval(async () => {
         attempts++
-        const { data } = await supabase.from('applications').select('funding_status').eq('event_id', eventId).eq('funding_status', 'funded').limit(1)
-        
-        if ((data && data.length > 0) || attempts > 5) {
+        let isFunded = false
+        if (pendingAppId) {
+          const { data } = await supabase.from('applications').select('funding_status').eq('id', pendingAppId).maybeSingle()
+          isFunded = data?.funding_status === 'funded'
+        }
+
+        if (isFunded || attempts > 5) {
           clearInterval(pollInterval)
-          toast.success('Payment received! Escrow funds are securely held.', { id: toastId, duration: 5000 })
+          try { sessionStorage.removeItem('pendingFundAppId') } catch {}
+          if (isFunded) {
+            toast.success('Payment received! Escrow funds are securely held.', { id: toastId, duration: 5000 })
+          } else {
+            toast('Payment is still processing. Refresh in a moment to see the updated status.', { id: toastId, icon: '⏳', duration: 6000 })
+          }
           loadEventData()
-          router.replace(pathname || `/dashboard/events/${eventId}`) // Strip URL params
+          router.replace(cleanPath) // Strip URL params
         }
       }, 2000)
-      
+
       return () => clearInterval(pollInterval)
 
-    } else if (searchParams.get('funded') === 'cancelled') {
+    } else if (fundedParam === 'cancelled') {
+      try { sessionStorage.removeItem('pendingFundAppId') } catch {}
       toast.error('Escrow checkout was cancelled.')
-      router.replace(pathname || `/dashboard/events/${eventId}`)
+      router.replace(cleanPath)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId])
 
  async function loadEventData() {
@@ -180,9 +199,13 @@ export default function EventManagerPage() {
 
   const handleUpdateEvent = async (e: React.FormEvent) => {
     e.preventDefault()
+    const budget = parseFloat(eventFormData.budget)
+    if (!Number.isFinite(budget) || budget < 0) return toast.error('Please enter a valid budget')
+    if (!eventFormData.title.trim()) return toast.error('Title is required')
+
     const { error } = await supabase.from('events').update({
         title: eventFormData.title, location: eventFormData.location, event_date: eventFormData.event_date,
-        budget: parseFloat(eventFormData.budget), description: eventFormData.description, website: eventFormData.website,
+        budget, description: eventFormData.description, website: eventFormData.website,
         poc_name: eventFormData.poc_name, poc_phone: eventFormData.poc_phone, visibility: eventFormData.visibility
       }).eq('id', eventId)
 
@@ -201,8 +224,13 @@ export default function EventManagerPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to start funding session')
 
-      if (data.url) window.location.href = data.url
-      else toast.dismiss(toastId) // FIX: Clear toast if no URL returned
+      if (data.url) {
+        try { sessionStorage.setItem('pendingFundAppId', appId) } catch {}
+        window.location.href = data.url
+      } else {
+        toast.error('Could not start checkout. Please try again.', { id: toastId })
+        setIsFunding(null)
+      }
     } catch (err: any) {
       toast.error(err.message, { id: toastId })
       setIsFunding(null)
@@ -225,11 +253,26 @@ export default function EventManagerPage() {
     e.preventDefault()
     if (!selectedRole) return toast.error('Please select a role')
     
-    // FIX: Basic Validation
-    if (new Date(endDate) < new Date(startDate)) return toast.error('End date cannot be before start date')
-    if (parseFloat(rate) <= 0) return toast.error('Rate must be greater than 0')
-    if (rateType === 'hourly' && parseFloat(estimatedHours) <= 0) return toast.error('Please enter valid estimated hours')
-    
+    // Validation (NaN-safe: parseFloat('') is NaN, and NaN <= 0 is false)
+    const rateNum = parseFloat(rate)
+    const hoursNum = parseFloat(estimatedHours)
+    if (endDate < startDate) return toast.error('End date cannot be before start date')
+    if (!Number.isFinite(rateNum) || rateNum <= 0) return toast.error('Rate must be greater than 0')
+    if (rateType === 'hourly' && (!Number.isFinite(hoursNum) || hoursNum <= 0)) return toast.error('Please enter valid estimated hours')
+
+    // Block pay changes once escrow is funded: the payout is calculated from the job's current rate,
+    // so editing it would release a different amount than was charged.
+    if (editingJobId) {
+      const existing = jobs.find(j => j.id === editingJobId)
+      const hasEscrow = existing?.applications?.some((a: any) => a.funding_status === 'funded' && a.payment_status !== 'paid')
+      const payChanged = existing && (
+        existing.rate !== rateNum ||
+        (existing.rate_type || 'flat') !== rateType ||
+        (rateType === 'hourly' && existing.estimated_hours !== hoursNum)
+      )
+      if (hasEscrow && payChanged) return toast.error('Pay terms are locked while escrow is funded for this role.')
+    }
+
    if (!editingJobId && userTier !== 'organizer_pro' && userTier !== 'organizer') {
       const limitToastId = toast.loading('Checking event limits...')
       const { count, error: countError } = await supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('event_id', eventId)
@@ -242,15 +285,15 @@ export default function EventManagerPage() {
       toast.dismiss(limitToastId)
     }
 
-    const jobData = {
-      event_id: eventId, organizer_id: currentUserId, title: selectedRole, rate: parseFloat(rate),
-      description: jobDescription, start_date: startDate, end_date: endDate, status: 'open',
-      rate_type: rateType, estimated_hours: rateType === 'hourly' ? parseFloat(estimatedHours) : 0
+    const jobFields = {
+      title: selectedRole, rate: rateNum, description: jobDescription, start_date: startDate, end_date: endDate,
+      rate_type: rateType, estimated_hours: rateType === 'hourly' ? hoursNum : 0
     }
-    
-    const { error } = editingJobId 
-      ? await supabase.from('jobs').update(jobData).eq('id', editingJobId)
-      : await supabase.from('jobs').insert(jobData)
+
+    // On edit, don't overwrite status/ownership (previously every edit reset status to 'open')
+    const { error } = editingJobId
+      ? await supabase.from('jobs').update(jobFields).eq('id', editingJobId)
+      : await supabase.from('jobs').insert({ ...jobFields, event_id: eventId, organizer_id: currentUserId, status: 'open' })
     
     if (error) toast.error(error.message)
     else { toast.success(editingJobId ? 'Job Updated!' : 'Job Added!'); resetForm(); loadEventData() }
@@ -553,7 +596,7 @@ export default function EventManagerPage() {
                                       ⏱️ Log Hours
                                     </button>
                                   ) : (
-                                    <ReleasePayoutButton applicationId={app.id} contractorName={app.profiles?.full_name || 'Contractor'} rate={job.rate_type === 'hourly' ? (app.actual_hours * job.rate) : job.rate} isPaid={false} />
+                                    <ReleasePayoutButton applicationId={app.id} />
                                   )}
                                 </div>
                               )}
@@ -581,8 +624,9 @@ export default function EventManagerPage() {
                               )}
                             </div>
                           </div>
-                        )}
-                      )}
+                          )
+                        })
+                    )}
                   </div>
                 </div>
             )
@@ -627,8 +671,8 @@ export default function EventManagerPage() {
           applicationId={loggingHoursApp.app.id}
           contractorName={loggingHoursApp.app.profiles?.full_name}
           hourlyRate={loggingHoursApp.job.rate}
-          estimatedHours={loggingHoursApp.job.estimated_hours}
-          onClose={() => setLoggingHoursApp(null)}
+          estimatedHours={loggingHoursApp.job.estimated_hours || 0}
+          onClose={() => { setLoggingHoursApp(null); loadEventData() }}
         />
       )}
     </div>

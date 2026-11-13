@@ -31,11 +31,15 @@ export async function POST(req: Request) {
 
     if (appError || !application) return NextResponse.json({ error: 'Application not found' }, { status: 404 })
 
+    // Supabase types joined rows as arrays; at runtime a many-to-one join returns a single object
+    const job: any = Array.isArray(application.jobs) ? application.jobs[0] : application.jobs
+    if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 })
+
     // 3. Strict Status & Ownership Checks
-    if (application.jobs.organizer_id !== user.id) {
+    if (job.organizer_id !== user.id) {
       return NextResponse.json({ error: 'Forbidden. You do not own this job.' }, { status: 403 })
     }
-    if (application.funding_status === 'funded') {
+    if (['funded', 'released'].includes(application.funding_status)) {
       return NextResponse.json({ error: 'This application has already been funded.' }, { status: 400 })
     }
     if (application.status !== 'pending' && application.status !== 'approved') {
@@ -69,9 +73,9 @@ export async function POST(req: Request) {
     }
 
     // 6. Safe Integer Math (Cents)
-    const laborCost = application.jobs.rate_type === 'hourly' 
-      ? (application.jobs.rate * (application.jobs.estimated_hours || 0)) 
-      : application.jobs.rate
+    const laborCost = job.rate_type === 'hourly' 
+      ? (job.rate * (job.estimated_hours || 0)) 
+      : job.rate
 
     const laborCents = Math.round(laborCost * 100)
     const feeCents = Math.round(laborCents * 0.10)
@@ -88,8 +92,8 @@ export async function POST(req: Request) {
     }
     const baseUrl = siteUrl?.replace(/\/$/, '') || 'http://localhost:3000'
     
-    const successUrl = `${baseUrl}/dashboard/event/${application.jobs.event_id}?funded=true`
-    const cancelUrl = `${baseUrl}/dashboard/event/${application.jobs.event_id}?funded=cancelled`
+    const successUrl = `${baseUrl}/dashboard/event/${job.event_id}?funded=true`
+    const cancelUrl = `${baseUrl}/dashboard/event/${job.event_id}?funded=cancelled`
 
     // 8. Create the Stripe Checkout Session (Expires in 30 mins, idempotency key removed)
     const session = await stripe.checkout.sessions.create({
@@ -99,7 +103,7 @@ export async function POST(req: Request) {
           price_data: {
             currency: 'usd',
             product_data: {
-              name: `Escrow Funding: ${application.jobs.title}`,
+              name: `Escrow Funding: ${job.title}`,
               description: `Labor: $${(laborCents / 100).toFixed(2)} + Platform Fee: $${(feeCents / 100).toFixed(2)}\nContractor: ${contractor.full_name}`,
             },
             unit_amount: amountInCents,
@@ -114,10 +118,10 @@ export async function POST(req: Request) {
       expires_at: Math.floor(Date.now() / 1000) + (30 * 60), // Expires in 30 minutes
       metadata: {
         application_id: application.id,
-        job_id: application.jobs.id,
+        job_id: job.id,
         organizer_id: user.id,
         contractor_id: contractor.id,
-        type: 'job_escrow_funding'
+        type: 'job_escrow_funding',
         labor_cents: String(laborCents)
       }
     })
