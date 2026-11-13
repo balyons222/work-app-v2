@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
+import { tierForPrice } from '@/src/config/stripePrices'
 
 // 1. Initialize Stripe (Aligned API Version)
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
@@ -226,7 +227,25 @@ export async function POST(req: Request) {
       const userId = session.client_reference_id
       const customerId = session.customer as string
       const subscriptionId = session.subscription as string
-      const tier = session.metadata?.plan_tier || 'contractor'
+
+      // Derive the tier from the price actually paid, never from metadata (which a caller could influence)
+      let tier: string | null = null
+      try {
+        const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 5 })
+        for (const item of lineItems.data) {
+          tier = tierForPrice(item.price?.id)
+          if (tier) break
+        }
+      } catch (err: any) {
+        console.error('Failed to read subscription line items:', err.message)
+        return new NextResponse('Stripe API error', { status: 500 }) // Retry
+      }
+
+      if (!tier) {
+        // Paid for a price we don't recognize: don't grant anything, flag for manual review
+        console.error('❌ Subscription for unknown price — no tier granted', { sessionId: session.id, userId })
+        return new NextResponse('Unknown price', { status: 200 }) // Retrying won't help
+      }
 
       const { error } = await supabaseAdmin
         .from('profiles')
