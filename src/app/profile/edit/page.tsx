@@ -56,7 +56,14 @@ export default function EditProfilePage() {
       .from('my_profile')
       .select('*')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
+
+    // This page is the contractor editor (skills, certs, portfolio). Organizers, and users who
+    // haven't finished setup, edit their profile on the role-aware setup page instead.
+    if (!profile || !profile.role || profile.role.toLowerCase() === 'organizer') {
+      router.replace('/setup-profile')
+      return
+    }
 
     if (profile) {
       setFullName(profile.full_name || '')
