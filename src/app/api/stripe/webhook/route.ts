@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
 
-// 1. Initialize Stripe (Matched to connect route version)
+// 1. Initialize Stripe (Aligned API Version)
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: '2023-10-16' as any, 
 })
@@ -18,19 +17,21 @@ export async function POST(req: Request) {
   const body = await req.text()
   const signature = req.headers.get('stripe-signature') as string
 
-  let event: Stripe.Event | null = null
-  let lastError = ''
-
-  // 3. Try both Platform and Connect webhook secrets
+  // ========================================================
+  // 3. FIX: MULTI-SECRET VERIFICATION LOOP
+  // ========================================================
   const secrets = [
     process.env.STRIPE_WEBHOOK_SECRET,
     process.env.STRIPE_CONNECT_WEBHOOK_SECRET,
   ].filter(Boolean) as string[]
 
+  let event: Stripe.Event | null = null
+  let lastError = ''
+
   for (const secret of secrets) {
     try {
       event = stripe.webhooks.constructEvent(body, signature, secret)
-      break
+      break // Stop if verification succeeds
     } catch (err: any) {
       lastError = err.message
     }
@@ -47,85 +48,117 @@ export async function POST(req: Request) {
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session
 
-    // SCENARIO A: ORGANIZER FUNDING ESCROW
+    // SCENARIO A: ESCROW FUNDING
     if (session.metadata?.type === 'job_escrow_funding') {
+      if (session.payment_status !== 'paid') {
+        return new NextResponse('Not paid yet', { status: 200 })
+      }
+
       const applicationId = session.metadata.application_id
-      console.log('💰 ESCROW FUNDED FOR APPLICATION:', applicationId)
+      const paymentIntentId = session.payment_intent as string
       
-      const { error } = await supabaseAdmin
+      let chargeId = ''
+      try {
+        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
+        chargeId = paymentIntent.latest_charge as string
+      } catch (err: any) {
+        console.error('Failed to retrieve payment intent:', err.message)
+        return new NextResponse('Stripe API error', { status: 500 }) // Retries
+      }
+
+      // FIX: Null-safe idempotent update
+      const { data: updated, error } = await supabaseAdmin
         .from('applications')
         .update({
           status: 'approved',
           funding_status: 'funded',
-          stripe_payment_intent_id: session.payment_intent as string,
+          stripe_payment_intent_id: paymentIntentId,
+          stripe_charge_id: chargeId,
+          funded_amount_cents: session.amount_total,
         })
         .eq('id', applicationId)
+        .or('funding_status.is.null,funding_status.neq.funded') // Matches NULL or anything not 'funded'
+        .select('id, applicant_id, jobs(title, organizer_id, events(title))')
 
       if (error) {
-        console.error('❌ Database update failed:', error)
+        console.error('Database update error:', error.message)
         return new NextResponse('Database error', { status: 500 })
       }
 
-      // --- NOTIFICATION LOGIC ---
+      if (!updated || updated.length === 0) {
+        console.log('Webhook event already processed for app:', applicationId)
+        return new NextResponse('Already processed', { status: 200 })
+      }
+
+      // FIX: Notifications actually fire
       try {
-        // FIX: Initialize Resend inside the block where it's actually used
+        const { Resend } = await import('resend')
         const resend = new Resend(process.env.RESEND_API_KEY)
         
-        const { data: app } = await supabaseAdmin.from('applications').select('*').eq('id', applicationId).single()
-        if (app) {
-          const { data: job } = await supabaseAdmin.from('jobs').select('*, events(title)').eq('id', app.job_id).single()
-          const { data: contractor } = await supabaseAdmin.from('profiles').select('*').eq('id', app.applicant_id).single()
-          
-          if (job && contractor) {
-            // 1. Send Resend Email to Contractor
-            await resend.emails.send({
-              from: 'FxD Events <hello@fxdevents.com>', 
-              to: contractor.email,
-              subject: `You're Hired! Escrow funded for ${job.title}`,
-              html: `
-                <div style="font-family: sans-serif; padding: 20px;">
-                  <h2 style="color: #10b981;">Congratulations ${contractor.full_name}! 🎉</h2>
-                  <p>The organizer has officially hired you and funded the escrow for <strong>${job.title}</strong> at <strong>${job.events?.title}</strong>.</p>
-                  <p>Your payout is securely locked in Stripe and will be released to your bank account after the event.</p>
-                </div>
-              `
-            })
+        const appData = updated[0]
+        const applicantId = appData.applicant_id
+        const organizerId = appData.jobs?.organizer_id
+        const jobTitle = appData.jobs?.title || 'the job'
+        const eventTitle = appData.jobs?.events?.title || 'the event'
 
-            // 2. Send Automated Chat Message
-            let convId = null;
-            const { data: existingConv } = await supabaseAdmin.from('conversations')
-              .select('id').eq('job_id', job.id).eq('worker_id', contractor.id).maybeSingle()
+        // Get applicant details
+        const { data: profile } = await supabaseAdmin
+          .from('profiles')
+          .select('email, full_name')
+          .eq('id', applicantId)
+          .single()
+
+        if (profile?.email) {
+          await resend.emails.send({
+            from: 'FxD Events <notifications@fxdevents.com>', // Ensure this domain is verified in Resend
+            to: profile.email,
+            subject: `You're Hired! ${jobTitle} for ${eventTitle}`,
+            html: `
+              <h2>Great news, ${profile.full_name}!</h2>
+              <p>You have been officially hired for <strong>${jobTitle}</strong> at <strong>${eventTitle}</strong>.</p>
+              <p>The organizer has successfully funded the escrow for this shift, and the money is locked in.</p>
+              <p><a href="${process.env.NEXT_PUBLIC_SITE_URL}/dashboard">Log in to view details</a></p>
+            `
+          })
+        }
+
+        // Setup Chat Conversation
+        if (organizerId) {
+          const { data: existingChat } = await supabaseAdmin
+            .from('conversations')
+            .select('id')
+            .eq('application_id', applicationId)
+            .maybeSingle()
+
+          let chatId = existingChat?.id
+
+          if (!chatId) {
+            const { data: newChat } = await supabaseAdmin.from('conversations').insert({
+              job_id: appData.jobs.id,
+              application_id: applicationId,
+              organizer_id: organizerId,
+              worker_id: applicantId
+            }).select('id').single()
             
-            if (existingConv) {
-                convId = existingConv.id
-            } else {
-                const { data: newConv } = await supabaseAdmin.from('conversations').insert({
-                    job_id: job.id,
-                    worker_id: contractor.id,
-                    organizer_id: job.organizer_id,
-                    application_id: app.id
-                }).select().single()
-                convId = newConv?.id
-            }
+            chatId = newChat?.id
+          }
 
-            if (convId) {
-                await supabaseAdmin.from('messages').insert({
-                    conversation_id: convId,
-                    sender_id: job.organizer_id,
-                    content: `🎉 Great news! I have officially hired you and funded the escrow. The payment is locked and ready for you after the shift. Looking forward to working with you!`
-                })
-            }
+          if (chatId) {
+            await supabaseAdmin.from('messages').insert({
+              conversation_id: chatId,
+              sender_id: organizerId, // Sent automatically on behalf of the organizer
+              content: `Hi! You are officially hired and escrow has been funded. Let me know if you have any questions before the event!`
+            })
           }
         }
-      } catch (notifyErr) {
-         console.error('Notification failed:', notifyErr)
+
+      } catch (notifErr: any) {
+        console.error('Notification error:', notifErr.message)
       }
-      return new NextResponse('Escrow funded successfully', { status: 200 })
     }
 
     // SCENARIO B: USER BUYING PRO SUBSCRIPTION
     else if (session.mode === 'subscription' && session.client_reference_id) {
-      console.log('🚀 PRO SUBSCRIPTION PURCHASED')
       const userId = session.client_reference_id
       const customerId = session.customer as string
       const subscriptionId = session.subscription as string
@@ -133,16 +166,12 @@ export async function POST(req: Request) {
 
       const { error } = await supabaseAdmin
         .from('profiles')
-        .update({ 
-          plan_tier: tier,
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscriptionId
-        })
+        .update({ plan_tier: tier, stripe_customer_id: customerId, stripe_subscription_id: subscriptionId })
         .eq('id', userId)
         
       if (error) {
-        console.error('❌ Subscription DB Update Error:', error)
-        return new NextResponse('Database Error', { status: 500 })
+        console.error('❌ Subscription DB Update Error:', error.message)
+        return new NextResponse('Database Error', { status: 500 }) // Forces Stripe retry
       }
       return new NextResponse('Subscription activated successfully', { status: 200 })
     }
@@ -151,46 +180,50 @@ export async function POST(req: Request) {
   // ========================================================
   // EVENT: SUBSCRIPTION CANCELED
   // ========================================================
-  if (event.type === 'customer.subscription.deleted') {
+  else if (event.type === 'customer.subscription.deleted') {
     const subscription = event.data.object as Stripe.Subscription
-    console.log('🗑️ WEBHOOK RECEIVED: customer.subscription.deleted')
     
-    await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from('profiles')
-      .update({ 
-        plan_tier: 'basic',
-        stripe_subscription_id: null 
-      })
+      .update({ plan_tier: 'basic', stripe_subscription_id: null })
       .eq('stripe_customer_id', subscription.customer as string)
+
+    if (error) {
+      console.error('❌ Sub delete error:', error.message)
+      return new NextResponse('Database Error', { status: 500 }) // Forces Stripe retry
+    }
   }
 
   // ========================================================
   // EVENT: CONNECT ACCOUNT ONBOARDED
   // ========================================================
-  // FIX: Removed v2 dead code, tracking only v1 account.updated
-  if (event.type === 'account.updated') {
-    const eventData = event.data.object as Stripe.Account
-    const accountId = eventData.id
-
-    if (accountId) {
-      // Ask Stripe for the true, fresh account details
-      const freshAccount = await stripe.accounts.retrieve(accountId);
-      
-      console.log(`🏦 Connect Account ${freshAccount.id} payouts_enabled set to: ${freshAccount.payouts_enabled}`);
-
-      // FIX: Explicitly handle and log Supabase update errors
-      const { data, error } = await supabaseAdmin
-        .from('profiles')
-        .update({ payouts_enabled: freshAccount.payouts_enabled })
-        .eq('stripe_account_id', freshAccount.id)
-        .select('id')
+  else if (event.type === 'account.updated') {
+    const account = event.data.object as Stripe.Account
+    
+    if (account.id) {
+      try {
+        const freshAccount = await stripe.accounts.retrieve(account.id)
         
-      if (error) {
-        console.error('❌ payouts_enabled update failed:', error)
-        return new NextResponse('Database error', { status: 500 })
-      }
-      if (!data?.length) {
-        console.error(`⚠️ No profile matched stripe_account_id ${freshAccount.id}`)
+        // FIX: Combine payouts check with transfer capability
+        const eligible = freshAccount.payouts_enabled && freshAccount.capabilities?.transfers === 'active'
+
+        const { data, error } = await supabaseAdmin
+          .from('profiles')
+          .update({ payouts_enabled: eligible })
+          .eq('stripe_account_id', freshAccount.id)
+          .select('id')
+
+        if (error) {
+          console.error('Account update DB error:', error.message)
+          return new NextResponse('Database error', { status: 500 })
+        }
+        
+        if (!data || data.length === 0) {
+          console.log(`No matching profile for Stripe account ${freshAccount.id}`)
+        }
+      } catch (err: any) {
+        console.error('Failed to retrieve fresh connect account:', err.message)
+        return new NextResponse('Stripe Error', { status: 500 })
       }
     }
   }
