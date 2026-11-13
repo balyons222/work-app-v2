@@ -142,7 +142,7 @@ export default function EventManagerPage() {
       setEvent(eventData)
       setEventFormData({
         title: eventData.title || '', location: eventData.location || '', event_date: eventData.event_date || '',
-        budget: eventData.budget || '', description: eventData.description || '', website: eventData.website || '',
+        budget: eventData.budget?.toString() || '', description: eventData.description || '', website: eventData.website || '',
         poc_name: eventData.poc_name || '', poc_phone: eventData.poc_phone || '', visibility: eventData.visibility || 'public'
       })
 

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/src/utils/supabase/admin'
 import { tierForPrice } from '@/src/config/stripePrices'
+import type { Database } from '@/src/types/database'
 
 // 1. Initialize Stripe (Aligned API Version)
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
@@ -9,10 +10,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
 })
 
 // 2. Initialize Supabase Admin
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-  process.env.SUPABASE_SERVICE_ROLE_KEY as string 
-)
+const supabaseAdmin = createAdminClient()
 
 // Escape user-controlled values (names, job/event titles) before putting them in email HTML
 const escapeHtml = (s: string) =>
@@ -267,7 +265,7 @@ export async function POST(req: Request) {
     // Plan switches in the billing portal, payment failures, reactivations
     const subscription = event.data.object as Stripe.Subscription
     const customerId = subscription.customer as string
-    let update: Record<string, any> | null = null
+    let update: Database['public']['Tables']['profiles']['Update'] | null = null
 
     if (subscription.status === 'active' || subscription.status === 'trialing') {
       const tier = subscription.items.data.map(i => tierForPrice(i.price?.id)).find(Boolean)

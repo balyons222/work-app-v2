@@ -4,6 +4,18 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/src/utils/supabase/client'
 import toast from 'react-hot-toast'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '@/src/types/database'
+
+type ProfileWrite = Database['public']['Tables']['profiles']['Update'] & { id: string }
+
+// Update the row created at signup, inserting only if it doesn't exist yet. A bare upsert can fail:
+// Postgres checks NOT NULL columns (email) before it sees the existing row, and users can't write email.
+async function saveOwnProfile(supabase: SupabaseClient<Database>, fields: ProfileWrite) {
+  const { data, error } = await supabase.from('profiles').update(fields).eq('id', fields.id).select('id')
+  if (error || (data && data.length > 0)) return { error }
+  return supabase.from('profiles').upsert(fields as Database['public']['Tables']['profiles']['Insert'])
+}
 
 const US_STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
@@ -89,7 +101,7 @@ function ProfileForm() {
           if (Array.isArray(data.skills)) {
             setSelectedRoles(data.skills)
           } else if (typeof data.skills === 'string') {
-            setSelectedRoles(data.skills.split(',').map((s: string) => s.trim()))
+            setSelectedRoles((data.skills as string).split(',').map((s: string) => s.trim()))
           }
         }
       }
@@ -151,9 +163,7 @@ function ProfileForm() {
       const finalReferralCode = myReferralCode || generateReferralCode()
       if (!myReferralCode) setMyReferralCode(finalReferralCode)
 
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
+      const { error } = await saveOwnProfile(supabase, {
           id: user.id,
           full_name: fullName,
           phone,
@@ -186,7 +196,7 @@ function ProfileForm() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        const { error } = await supabase.from('profiles').upsert({
+        const { error } = await saveOwnProfile(supabase, {
           id: user.id,
           full_name: fullName,
           phone: phone, 

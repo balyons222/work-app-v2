@@ -26,7 +26,7 @@ export default function JobPostForm() {
 
     // NEW: Added explicit 'as string' to satisfy TypeScript's strict mode
     const jobData = {
-      role: formData.get('role') as string,
+      job_role: formData.get('role') as string,
       title: formData.get('title') as string,
       description: formData.get('description') as string,
       location: formData.get('location') as string,

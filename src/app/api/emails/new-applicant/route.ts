@@ -1,14 +1,11 @@
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/src/utils/supabase/admin'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 // Use Admin client to bypass Row Level Security so the backend can freely fetch emails
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const supabaseAdmin = createAdminClient()
 
 export async function POST(req: Request) {
   try {

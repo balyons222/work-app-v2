@@ -74,7 +74,7 @@ export default function EditProfilePage() {
         Array.isArray(profile.skills) 
           ? profile.skills 
           : typeof profile.skills === 'string' 
-            ? profile.skills.split(',').map((s: string) => s.trim()) 
+            ? (profile.skills as string).split(',').map((s: string) => s.trim()) 
             : []
       )
       setCerts(profile.certifications || '')
