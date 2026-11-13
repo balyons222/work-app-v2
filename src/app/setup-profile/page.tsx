@@ -66,7 +66,7 @@ function ProfileForm() {
     async function getProfile() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+        const { data } = await supabase.from('my_profile').select('*').eq('id', user.id).maybeSingle()
         if (data) {
           setFullName(data.full_name || '')
           setPhone(data.phone || '')
@@ -136,15 +136,11 @@ function ProfileForm() {
 
       // Process the invite code if they entered one and aren't already referred
       if (inviteCode && !referredById) {
-        const { data: referrer } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('referral_code', inviteCode)
-          .single()
+        const { data: referrerId } = await supabase.rpc('lookup_referrer', { code: inviteCode.trim() })
 
-        if (referrer) {
-          finalReferredBy = referrer.id
-          setReferredById(referrer.id) // Update state
+        if (referrerId) {
+          finalReferredBy = referrerId
+          setReferredById(referrerId) // Update state
         } else {
           setLoading(false)
           return toast.error('Invalid invite code')

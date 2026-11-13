@@ -17,7 +17,7 @@ export async function POST(req: Request) {
 
     // Fetch the user's Stripe Customer ID
     const { data: profile } = await supabase
-      .from('profiles')
+      .from('my_profile')
       .select('stripe_customer_id')
       .eq('id', user.id)
       .single()

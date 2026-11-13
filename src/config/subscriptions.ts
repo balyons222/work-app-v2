@@ -12,7 +12,13 @@ export const PLAN_LIMITS = {
     canHeadhunt: false,
     jobPostsPerMonth: 0
   },
-  organizer_pro: {
+  organizer: { // Organizer Hub — the tier name the pricing page/webhook actually store
+    maxImages: 10,
+    canSeeAnalytics: true,
+    canHeadhunt: true,
+    jobPostsPerMonth: 999 // Unlimited
+  },
+  organizer_pro: { // Same as 'organizer'; kept for any older rows using this name
     maxImages: 10,
     canSeeAnalytics: true,
     canHeadhunt: true,

@@ -1,6 +1,7 @@
 import { createClient } from '../../../utils/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { PUBLIC_PROFILE_COLUMNS } from '@/src/utils/profileColumns'
 
 export default async function PublicProfilePage({ params }: { params: { id: string } }) {
   const supabase = await createClient()
@@ -8,7 +9,7 @@ export default async function PublicProfilePage({ params }: { params: { id: stri
   // 1. Fetch the specific profile
   const { data: profile } = await supabase
     .from('profiles')
-    .select('*')
+    .select(PUBLIC_PROFILE_COLUMNS)
     .eq('id', params.id)
     .single()
 

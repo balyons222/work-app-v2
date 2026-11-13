@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '../../utils/supabase/server'
+import { PUBLIC_PROFILE_COLUMNS } from '@/src/utils/profileColumns'
 
 export async function searchContractors(formData: FormData) {
   const supabase = await createClient()
@@ -10,7 +11,7 @@ export async function searchContractors(formData: FormData) {
   // Start the query: Get all profiles
   let query = supabase
     .from('profiles')
-    .select('*')
+    .select(PUBLIC_PROFILE_COLUMNS)
     //.eq('role', 'worker') // Uncomment this if you have a 'role' column to filter only workers!
   
   // If user typed a location, filter by city or state
