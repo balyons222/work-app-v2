@@ -13,9 +13,14 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY as string 
 )
 
+// Escape user-controlled values (names, job/event titles) before putting them in email HTML
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
+
 export async function POST(req: Request) {
   const body = await req.text()
-  const signature = req.headers.get('stripe-signature') as string
+  const signature = req.headers.get('stripe-signature')
+  if (!signature) return new NextResponse('Missing stripe-signature header', { status: 400 })
 
   // ========================================================
   // 3. FIX: MULTI-SECRET VERIFICATION LOOP
@@ -24,6 +29,11 @@ export async function POST(req: Request) {
     process.env.STRIPE_WEBHOOK_SECRET,
     process.env.STRIPE_CONNECT_WEBHOOK_SECRET,
   ].filter(Boolean) as string[]
+
+  if (secrets.length === 0) {
+    console.error('❌ Webhook Error: no webhook secrets configured')
+    return new NextResponse('Webhook not configured', { status: 500 })
+  }
 
   let event: Stripe.Event | null = null
   let lastError = ''
@@ -56,7 +66,11 @@ export async function POST(req: Request) {
 
       const applicationId = session.metadata.application_id
       const paymentIntentId = session.payment_intent as string
-      
+      if (!applicationId || !paymentIntentId) {
+        console.error('Escrow session missing application_id or payment_intent:', session.id)
+        return new NextResponse('Malformed escrow session', { status: 200 }) // Retrying won't help
+      }
+
       let chargeId = ''
       try {
         const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
@@ -78,7 +92,9 @@ export async function POST(req: Request) {
           funded_labor_cents: parseInt(session.metadata.labor_cents || '0', 10),
         })
         .eq('id', applicationId)
-        .or('funding_status.is.null,funding_status.neq.funded') // Matches NULL or anything not 'funded'
+        // Only transition from an unfunded state. The old `neq.funded` filter also matched 'released',
+        // so a replayed/duplicate checkout could flip a PAID application back to 'funded' and enable a second payout.
+        .or('funding_status.is.null,funding_status.not.in.(funded,released,refunded)')
         .select('id, applicant_id, jobs(id, title, organizer_id, events(title))')
 
       if (error) {
@@ -87,6 +103,29 @@ export async function POST(req: Request) {
       }
 
       if (!updated || updated.length === 0) {
+        // Either a Stripe retry of this same session (safe to ignore), or a SECOND checkout session
+        // was paid for an application that's already funded (two tabs / double click). In the latter
+        // case the organizer was charged twice, so refund the duplicate.
+        const { data: existing } = await supabaseAdmin
+          .from('applications')
+          .select('stripe_payment_intent_id')
+          .eq('id', applicationId)
+          .maybeSingle()
+
+        if (existing && existing.stripe_payment_intent_id && existing.stripe_payment_intent_id !== paymentIntentId) {
+          try {
+            await stripe.refunds.create(
+              { payment_intent: paymentIntentId, reason: 'duplicate' },
+              { idempotencyKey: `dup-escrow-refund-${paymentIntentId}` }
+            )
+            console.warn(`Refunded duplicate escrow payment ${paymentIntentId} for app ${applicationId}`)
+          } catch (refundErr: any) {
+            console.error('Duplicate escrow refund failed:', refundErr.message)
+            return new NextResponse('Refund error', { status: 500 }) // Retry
+          }
+          return new NextResponse('Duplicate payment refunded', { status: 200 })
+        }
+
         console.log('Webhook event already processed for app:', applicationId)
         return new NextResponse('Already processed', { status: 200 })
       }
@@ -97,12 +136,14 @@ export async function POST(req: Request) {
             const { Resend } = await import('resend')
             const resend = new Resend(process.env.RESEND_API_KEY)
             
-            const appData = updated[0]
+            const appData = updated[0] as any
+            const job = Array.isArray(appData.jobs) ? appData.jobs[0] : appData.jobs
+            const evt = Array.isArray(job?.events) ? job.events[0] : job?.events
             const applicantId = appData.applicant_id
-            const organizerId = appData.jobs?.organizer_id
-            const jobId = appData.jobs?.id
-            const jobTitle = appData.jobs?.title || 'a new role'
-            const eventTitle = appData.jobs?.events?.title || 'an upcoming event'
+            const organizerId = job?.organizer_id
+            const jobId = job?.id
+            const jobTitle = job?.title || 'a new role'
+            const eventTitle = evt?.title || 'an upcoming event'
 
             // Fetch the contractor's profile for the email
             const { data: profile } = await supabaseAdmin
@@ -120,8 +161,8 @@ export async function POST(req: Request) {
                 subject: `You're Hired! ${jobTitle} for ${eventTitle}`,
                 html: `
                   <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; color: #333;">
-                    <h2>Great news, ${profile.full_name}!</h2>
-                    <p>You have been officially hired for <strong>${jobTitle}</strong> at <strong>${eventTitle}</strong>.</p>
+                    <h2>Great news, ${escapeHtml(profile.full_name || 'there')}!</h2>
+                    <p>You have been officially hired for <strong>${escapeHtml(jobTitle)}</strong> at <strong>${escapeHtml(eventTitle)}</strong>.</p>
                     <p>The organizer has successfully funded the escrow for this shift, and the money is securely locked in.</p>
                     <p style="margin-top: 32px;">
                       <a href="${process.env.NEXT_PUBLIC_SITE_URL}/dashboard" style="background-color: #000; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
@@ -228,7 +269,7 @@ export async function POST(req: Request) {
         const freshAccount = await stripe.accounts.retrieve(account.id)
         
         // FIX: Combine payouts check with transfer capability
-        const eligible = freshAccount.payouts_enabled && freshAccount.capabilities?.transfers === 'active'
+        const eligible = !!freshAccount.payouts_enabled && freshAccount.capabilities?.transfers === 'active'
 
         const { data, error } = await supabaseAdmin
           .from('profiles')
