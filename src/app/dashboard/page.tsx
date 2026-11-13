@@ -348,6 +348,15 @@ useEffect(() => {
             Overview {unreadCount > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full animate-bounce">{unreadCount}</span>}
           </button>
           <button onClick={() => setActiveTab('reports')} className={`pb-4 text-sm font-bold border-b-2 ${activeTab === 'reports' ? 'border-primary text-primary' : 'border-transparent text-slate-400'}`}>Reports & Analytics</button>
+        {/* NEW: Roster Link (Only visible to Organizers) */}
+          {profile?.role?.toLowerCase() === 'organizer' && (
+            <Link 
+              href="/dashboard/roster" 
+              className="pb-4 text-sm font-bold border-b-2 border-transparent text-slate-400 hover:text-primary transition-colors"
+            >
+              My Roster
+            </Link>
+          )}
         </div>
 
         {/* Get Paid Banner */}
