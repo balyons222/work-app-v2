@@ -145,27 +145,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, transferId: transfer.id })
     }
 
-    // 9. Refund unused escrow labor to the organizer (hourly jobs that came in under estimate)
-    const unusedCents = fundedLaborCents - payoutCents
-    if (unusedCents > 0) {
+    // 9. Refund unused escrow to the organizer (hourly jobs that came in under estimate):
+    //    the unused labor PLUS the platform fee charged on that unused labor.
+    //    Fee charged at funding = Basic 15% / Pro Hub 10%, fixed when funded.
+    const fundedFeeCents = app.funded_amount_cents && app.funded_labor_cents
+      ? app.funded_amount_cents - app.funded_labor_cents
+      : Math.round(fundedLaborCents * LEGACY_FEE_RATE)
+    const unusedLaborCents = fundedLaborCents - payoutCents
+    const unusedFeeCents = unusedLaborCents > 0
+      ? Math.round(fundedFeeCents * unusedLaborCents / fundedLaborCents)
+      : 0
+    const refundCents = unusedLaborCents + unusedFeeCents
+
+    if (refundCents > 0) {
       try {
         await stripe.refunds.create({
           charge: chargeId,
-          amount: unusedCents,
-          metadata: { application_id: app.id, type: 'unused_escrow_refund' },
+          amount: refundCents,
+          metadata: {
+            application_id: app.id,
+            type: 'unused_escrow_refund',
+            unused_labor_cents: String(unusedLaborCents),
+            unused_fee_cents: String(unusedFeeCents),
+          },
         }, { idempotencyKey: `refund-unused-${app.id}` })
       } catch (refundErr: any) {
         // Don't fail the contractor's payout, but this needs manual follow-up
-        console.error('CRITICAL: Unused escrow refund failed — refund manually', { applicationId: app.id, chargeId, unusedCents }, refundErr.message)
+        console.error('CRITICAL: Unused escrow refund failed — refund manually', { applicationId: app.id, chargeId, refundCents }, refundErr.message)
       }
     }
 
-    // 10. Ledger
-    // Record the fee actually charged at funding (Basic 15% / Pro Hub 10%, fixed when funded).
-    // The fee is not refunded for unused hours, so this is what the platform retains.
-    const platformFeeCents = app.funded_amount_cents && app.funded_labor_cents
-      ? app.funded_amount_cents - app.funded_labor_cents
-      : Math.round(fundedLaborCents * LEGACY_FEE_RATE)
+    // 10. Ledger: the fee the platform keeps is the fee on labor actually paid out
+    const platformFeeCents = fundedFeeCents - unusedFeeCents
     const { error: ledgerError } = await supabaseAdmin.from('payouts').insert({
       application_id: app.id,
       job_id: job.id,
