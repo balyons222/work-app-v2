@@ -38,7 +38,7 @@ export default async function PublicProfilePage({ params }: { params: { id: stri
                 {profile.avatar_url ? (
                   <img 
                     src={profile.avatar_url} 
-                    alt={profile.full_name} 
+                    alt={profile.full_name ?? ''} 
                     className="w-full h-full object-cover rounded-full"
                   />
                 ) : (
@@ -118,7 +118,7 @@ export default async function PublicProfilePage({ params }: { params: { id: stri
                   <h3 className="font-bold text-primary mb-3">Skills</h3>
                   <div className="flex flex-wrap gap-2">
                     {profile.skills ? (
-                      profile.skills.split(',').map((skill: string, i: number) => (
+                      (Array.isArray(profile.skills) ? profile.skills : String(profile.skills).split(',')).map((skill: string, i: number) => (
                         <span key={i} className="bg-teal-50 text-teal-800 text-sm font-medium px-3 py-1 rounded-md border border-teal-100">
                           {skill.trim()}
                         </span>

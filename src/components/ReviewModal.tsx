@@ -31,7 +31,7 @@ export default function ReviewModal({ isOpen, onClose, jobId, targetId, targetNa
     const { error } = await supabase.from('reviews').insert({
       job_id: jobId,
       reviewer_id: user.id,
-      target_id: targetId,
+      reviewee_id: targetId,
       rating,
       comment
     })

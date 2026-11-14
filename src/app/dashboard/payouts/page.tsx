@@ -21,7 +21,7 @@ export default function PayoutsPage() {
           .eq('id', user.id)
           .single()
         
-        if (data) setPayoutsEnabled(data.payouts_enabled)
+        if (data) setPayoutsEnabled(data.payouts_enabled ?? false)
       }
     }
     loadProfile()

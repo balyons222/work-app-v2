@@ -74,7 +74,7 @@ export default function EditProfilePage() {
         Array.isArray(profile.skills) 
           ? profile.skills 
           : typeof profile.skills === 'string' 
-            ? profile.skills.split(',').map((s: string) => s.trim()) 
+            ? (profile.skills as string).split(',').map((s: string) => s.trim()) 
             : []
       )
       setCerts(profile.certifications || '')
@@ -144,8 +144,7 @@ export default function EditProfilePage() {
 
       // 3. Save to Database
       toast.loading("Updating database...", { id: loadingToast })
-      const updates: any = {
-        id: user.id,
+      const updates = {
         full_name: fullName,
         location,
         years_experience: parseInt(experience) || 0,
@@ -159,7 +158,8 @@ export default function EditProfilePage() {
         updated_at: new Date().toISOString()
       }
 
-      const { error } = await supabase.from('profiles').upsert(updates)
+      // UPDATE, never upsert: upserts on profiles are refused under the column grants
+      const { error } = await supabase.from('profiles').update(updates).eq('id', user.id)
       
       if (error) {
         console.error("🚨 Supabase Raw Error:", JSON.stringify(error, null, 2))

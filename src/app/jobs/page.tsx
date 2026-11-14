@@ -58,7 +58,7 @@ if (error) {
       // Create a map: { 'job_id_1': 'pending', 'job_id_2': 'approved' }
       const statusMap: Record<string, string> = {}
       appsData.forEach(app => {
-        statusMap[app.job_id] = app.status
+        if (app.status) statusMap[app.job_id] = app.status
       })
       setMyAppStatus(statusMap)
     }

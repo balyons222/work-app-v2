@@ -4,6 +4,21 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/src/utils/supabase/client'
 import toast from 'react-hot-toast'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '@/src/types/database'
+
+type ProfileWrite = Database['public']['Tables']['profiles']['Update'] & { id: string }
+
+// Always UPDATE the row created at signup; never upsert. Under the profiles column grants an upsert
+// is refused ("permission denied for table profiles"): ON CONFLICT DO UPDATE needs SELECT on every
+// written column, and phone/referral fields are write-only. It would also trip NOT NULL on email.
+async function saveOwnProfile(supabase: SupabaseClient<Database>, fields: ProfileWrite) {
+  const { id, ...changes } = fields
+  const { data, error } = await supabase.from('profiles').update(changes).eq('id', id).select('id')
+  if (error) return { error }
+  if (!data || data.length === 0) return { error: { message: 'Profile not found. Please sign out and back in, or contact support.' } }
+  return { error: null }
+}
 
 const US_STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
@@ -89,7 +104,7 @@ function ProfileForm() {
           if (Array.isArray(data.skills)) {
             setSelectedRoles(data.skills)
           } else if (typeof data.skills === 'string') {
-            setSelectedRoles(data.skills.split(',').map((s: string) => s.trim()))
+            setSelectedRoles((data.skills as string).split(',').map((s: string) => s.trim()))
           }
         }
       }
@@ -151,9 +166,7 @@ function ProfileForm() {
       const finalReferralCode = myReferralCode || generateReferralCode()
       if (!myReferralCode) setMyReferralCode(finalReferralCode)
 
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
+      const { error } = await saveOwnProfile(supabase, {
           id: user.id,
           full_name: fullName,
           phone,
@@ -186,7 +199,7 @@ function ProfileForm() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        const { error } = await supabase.from('profiles').upsert({
+        const { error } = await saveOwnProfile(supabase, {
           id: user.id,
           full_name: fullName,
           phone: phone, 

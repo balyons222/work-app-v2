@@ -12,7 +12,7 @@ export default function StarRating({ userId, readOnly = true }: { userId: string
       const { data } = await supabase
         .from('reviews')
         .select('rating')
-        .eq('target_id', userId)
+        .eq('reviewee_id', userId)
 
       if (data && data.length > 0) {
         // Calculate Average

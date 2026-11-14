@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@/src/utils/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/src/utils/supabase/admin'
 import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
@@ -9,10 +9,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: '2023-10-16' as any, // Keep aligned with fund-job + webhook
 })
 
-const supabaseAdmin = createAdminClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const supabaseAdmin = createAdminClient()
 
 // Rows funded before funded_amount_cents/funded_labor_cents were recorded all used the old flat 10% fee
 const LEGACY_FEE_RATE = 0.10

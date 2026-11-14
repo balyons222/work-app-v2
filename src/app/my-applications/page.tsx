@@ -31,7 +31,7 @@ export default function MyApplications() {
     const { data, error } = await supabase
       .from('applications')
       .select('*, jobs(*, events(title))')
-      .eq('worker_id', user.id)
+      .eq('applicant_id', user.id)
       .order('created_at', { ascending: false })
 
     if (error) console.error(error)

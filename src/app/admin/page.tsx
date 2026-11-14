@@ -1,5 +1,5 @@
 import { createClient as createServerClient } from '@/src/utils/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/src/utils/supabase/admin'
 import { redirect } from 'next/navigation'
 import DeleteUserButton from '@/src/components/DeleteUserButton'
 
@@ -15,7 +15,7 @@ export default async function AdminDashboard() {
   }
 
   // 2. Fetch all profiles. Service role is required: private columns aren't readable by normal users
-  const supabaseAdmin = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+  const supabaseAdmin = createAdminClient()
   const { data: users } = await supabaseAdmin
     .from('profiles')
     .select('*')

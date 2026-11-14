@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient as createServerClient } from '@/src/utils/supabase/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/src/utils/supabase/admin'
 import { platformFeeRate } from '@/src/config/platformFees'
 
 // Initialize Stripe
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     if (job.organizer_id !== user.id) {
       return NextResponse.json({ error: 'Forbidden. You do not own this job.' }, { status: 403 })
     }
-    if (['funded', 'released'].includes(application.funding_status)) {
+    if (['funded', 'released'].includes(application.funding_status ?? '')) {
       return NextResponse.json({ error: 'This application has already been funded.' }, { status: 400 })
     }
     if (application.status !== 'pending' && application.status !== 'approved') {
@@ -48,10 +48,7 @@ export async function POST(req: Request) {
     }
 
     // 4. Service-Role Fetch for Contractor Profile (Bypasses RLS)
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!, 
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const supabaseAdmin = createAdminClient()
     
     const { data: contractor } = await supabaseAdmin
       .from('profiles')
