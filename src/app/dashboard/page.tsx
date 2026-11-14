@@ -429,11 +429,6 @@ useEffect(() => {
               Edit Profile
             </Link>
             
-            {(profile?.role?.toLowerCase()?.includes('contractor') || profile?.role?.toLowerCase()?.includes('worker')) && (
-              <Link href="/profile/settings" className="w-full md:w-auto text-center px-6 py-2 bg-slate-100 text-slate-700 rounded-lg font-bold hover:bg-slate-200 transition-all">
-                Preferences
-              </Link>
-            )}
           </div>
         </div>
 
