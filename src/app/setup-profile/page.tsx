@@ -9,12 +9,15 @@ import type { Database } from '@/src/types/database'
 
 type ProfileWrite = Database['public']['Tables']['profiles']['Update'] & { id: string }
 
-// Update the row created at signup, inserting only if it doesn't exist yet. A bare upsert can fail:
-// Postgres checks NOT NULL columns (email) before it sees the existing row, and users can't write email.
+// Always UPDATE the row created at signup; never upsert. Under the profiles column grants an upsert
+// is refused ("permission denied for table profiles"): ON CONFLICT DO UPDATE needs SELECT on every
+// written column, and phone/referral fields are write-only. It would also trip NOT NULL on email.
 async function saveOwnProfile(supabase: SupabaseClient<Database>, fields: ProfileWrite) {
-  const { data, error } = await supabase.from('profiles').update(fields).eq('id', fields.id).select('id')
-  if (error || (data && data.length > 0)) return { error }
-  return supabase.from('profiles').upsert(fields as Database['public']['Tables']['profiles']['Insert'])
+  const { id, ...changes } = fields
+  const { data, error } = await supabase.from('profiles').update(changes).eq('id', id).select('id')
+  if (error) return { error }
+  if (!data || data.length === 0) return { error: { message: 'Profile not found. Please sign out and back in, or contact support.' } }
+  return { error: null }
 }
 
 const US_STATES = [
