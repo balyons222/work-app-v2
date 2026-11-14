@@ -176,6 +176,11 @@ export default function ProfilePage() {
               <p className="text-secondary font-bold uppercase text-xs tracking-widest mb-4">
                 {profile.role} • {profile.location || 'Location not set'}
               </p>
+              {profile.typical_availability && (
+                <p className="text-sm text-slate-500 -mt-2 mb-4">
+                  <span className="font-bold text-slate-700">Available:</span> {profile.typical_availability}
+                </p>
+              )}
               
               <div className="flex flex-wrap gap-2 mb-6">
                 {profile.skills && profile.skills.length > 0 ? (

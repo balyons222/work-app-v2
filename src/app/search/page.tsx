@@ -45,6 +45,7 @@ function SearchContent() {
     // We manually check if role is 'contractor' OR 'worker' (Case insensitive)
     const workersOnly = data?.filter(p => {
        const role = p.role ? p.role.toLowerCase() : ''
+       if (p.is_private) return false // contractor turned off "Show me in Find Talent"
        return role === 'contractor' || role === 'worker' || role === 'event professional'
     }) || []
 
@@ -155,6 +156,9 @@ function SearchContent() {
                         </div>
 
                         <p className="text-xs text-slate-500 uppercase tracking-wide truncate">{profile.location || 'Location N/A'}</p>
+                        {profile.typical_availability && (
+                          <p className="text-[11px] text-secondary font-bold truncate">Available: {profile.typical_availability}</p>
+                        )}
                         
                         {profile.avgRating > 0 && (
                           <div className="flex items-center gap-1 mt-1">
