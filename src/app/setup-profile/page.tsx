@@ -61,6 +61,8 @@ function ProfileForm() {
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [role, setRole] = useState('contractor')
+  // Account type is permanent once chosen (also enforced by a DB trigger); changes go through support
+  const [lockedRole, setLockedRole] = useState<string | null>(null)
   const [bio, setBio] = useState('')
   const [city, setCity] = useState('')
   const [state, setState] = useState('')
@@ -85,7 +87,11 @@ function ProfileForm() {
         if (data) {
           setFullName(data.full_name || '')
           setPhone(data.phone || '')
-          setRole(data.role?.toLowerCase() || 'contractor')
+          const existingRole = data.role?.toLowerCase() || null
+          if (existingRole) {
+            setLockedRole(existingRole)
+            setRole(existingRole === 'organizer' ? 'organizer' : 'contractor') // legacy 'worker' = contractor
+          }
           setBio(data.bio || '')
           setAvatarUrl(data.avatar_url || null)
           setMyReferralCode(data.referral_code || null)
@@ -170,7 +176,7 @@ function ProfileForm() {
           id: user.id,
           full_name: fullName,
           phone,
-          role,
+          ...(lockedRole ? {} : { role }),
           avatar_url: avatarUrl,
           referred_by: finalReferredBy,
           referral_code: finalReferralCode,
@@ -203,7 +209,7 @@ function ProfileForm() {
           id: user.id,
           full_name: fullName,
           phone: phone, 
-          role: role,
+          ...(lockedRole ? {} : { role }),
           bio: bio,
           skills: selectedRoles, 
           location: formattedLocation,
@@ -262,10 +268,18 @@ function ProfileForm() {
             <div className="space-y-4">
               <input value={fullName} placeholder="Full Name" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setFullName(e.target.value)} />
               <input type="tel" value={phone} placeholder="Mobile Phone" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setPhone(e.target.value)} />
-              <select value={role} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setRole(e.target.value)}>
-                <option value="contractor">Event Professional</option>
-                <option value="organizer">Event Organizer</option>
-              </select>
+              {lockedRole ? (
+                <div className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Account type</p>
+                  <p className="font-bold text-primary">{role === 'organizer' ? 'Event Organizer' : 'Event Professional'}</p>
+                  <p className="text-xs text-slate-400 mt-1">Need to change this? Contact support.</p>
+                </div>
+              ) : (
+                <select value={role} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-secondary" onChange={(e) => setRole(e.target.value)}>
+                  <option value="contractor">Event Professional</option>
+                  <option value="organizer">Event Organizer</option>
+                </select>
+              )}
               
               {!referredById && (
                 <div className="flex flex-col">
