@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { createClient } from '@/src/utils/supabase/client'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-import { sendNotification } from '@/src/utils/notifications'
+import { notify } from '@/src/utils/notifications'
 import TermsModal from '@/src/components/TermsModal'
 import ChatWindow from '@/src/components/ChatWindow'
 import StripeConnectButton from '@/src/components/StripeConnectButton'
@@ -269,7 +269,7 @@ useEffect(() => {
   const submitReview = async () => {
     const { data: { user } } = await supabase.auth.getUser(); if (!user) return
     const { error } = await supabase.from('reviews').insert({ reviewer_id: user.id, reviewee_id: reviewTarget.organizerId, job_id: reviewTarget.jobId, rating, comment })
-    if (!error) { toast.success('Review Submitted!'); await sendNotification({ userId: reviewTarget.organizerId, title: "New Review! ⭐", message: `A worker left you a review.`, link: `/dashboard`, type: "success" }); setReviewModalOpen(false); loadDashboardData() }
+    if (!error) { toast.success('Review Submitted!'); notify({ kind: 'review', jobId: reviewTarget.jobId, revieweeId: reviewTarget.organizerId }); setReviewModalOpen(false); loadDashboardData() }
   }
 
   const handleDuplicateEvent = async (originalEventId: string) => {

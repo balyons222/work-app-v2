@@ -1,45 +1,21 @@
-import { createClient } from '@/src/utils/supabase/client'
+// Tell the server something happened; it verifies it and creates the in-app notification + email.
+// The browser never chooses the recipient or the text (see src/app/api/notify/route.ts).
+export type NotifyEvent =
+  | { kind: 'new_applicant'; jobId: string }
+  | { kind: 'review'; jobId: string; revieweeId: string }
+  | { kind: 'invite'; eventId: string; inviteeId: string; jobId?: string | null }
 
-const supabase = createClient()
-
-interface NotificationPayload {
-  userId: string
-  title: string
-  message: string
-  link: string
-  type?: 'info' | 'success' | 'warning' | 'error'
-}
-
-export async function sendNotification({ userId, title, message, link, type = 'info' }: NotificationPayload) {
+export async function notify(event: NotifyEvent): Promise<boolean> {
   try {
-    // 1. In-App Notification (Database)
-    const { error: dbError } = await supabase
-      .from('notifications')
-      .insert({
-        user_id: userId,
-        title,
-        message,
-        link,
-        type,
-        is_read: false
-      })
-
-    if (dbError) {
-      console.error('Error creating DB notification:', dbError)
-    }
-
-    // 2. Email Notification (Server API)
-    // We fire-and-forget this so the UI doesn't wait for the email to send
-    fetch('/api/notify', {
+    const res = await fetch('/api/notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, title, message, link, type })
-    }).catch(err => console.error('Failed to trigger email:', err))
-
-    return true
-
-  } catch (error) {
-    console.error('Notification failed:', error)
+      body: JSON.stringify(event),
+    })
+    if (!res.ok) console.error('Notification failed:', res.status)
+    return res.ok
+  } catch (err) {
+    console.error('Notification failed:', err)
     return false
   }
 }

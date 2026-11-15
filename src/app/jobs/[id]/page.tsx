@@ -5,7 +5,7 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-import { sendNotification } from '@/src/utils/notifications'
+import { notify } from '@/src/utils/notifications'
 import TermsModal from '@/src/components/TermsModal'
 import ChatWindow from '@/src/components/ChatWindow'
 
@@ -189,21 +189,8 @@ export default function JobDetailsPage() {
       setAppStatus('pending')
 
       if (job?.organizer_id) {
-        // 1. Send in-app notification
-        await sendNotification({
-          userId: job.organizer_id,
-          title: "New Applicant 📝",
-          message: `Someone just applied for "${job.title}". Review their profile now.`,
-          link: `/dashboard/event/${job.event_id}`, 
-          type: "info"
-        })
-
-        // 2. Trigger automated email via our new API route
-        fetch('/api/emails/new-applicant', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jobId, applicantId: currentUser.id })
-        }).catch(err => console.error('Failed to trigger email:', err))
+        // Organizer gets an in-app notice + email (server verifies the application exists)
+        notify({ kind: 'new_applicant', jobId })
       }
     }
   }

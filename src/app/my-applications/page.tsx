@@ -77,7 +77,7 @@ export default function MyApplications() {
                   
                   {/* Rating + Location */}
                   <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
-                    <StarRating userId={app.jobs?.employer_id} />
+                    <StarRating userId={app.jobs?.organizer_id} />
                     <span>• {app.jobs?.location}</span>
                     <span className="text-green-700 font-bold">• ${app.jobs?.price}</span>
                   </div>
@@ -90,7 +90,7 @@ export default function MyApplications() {
                         startChat(supabase, router, {
                             jobId: app.job_id,
                             workerId: user.id,
-                            organizerId: app.jobs.employer_id
+                            organizerId: app.jobs.organizer_id
                         })
                     }}
                     className="mt-3 text-sm font-bold text-primary hover:text-blue-800 flex items-center gap-1 transition-colors"
@@ -119,7 +119,7 @@ export default function MyApplications() {
                         onClick={() => {
                         setSelectedJob({
                             jobId: app.job_id,
-                            targetId: app.jobs.employer_id, 
+                            targetId: app.jobs.organizer_id, 
                             targetName: app.jobs.events?.title || "the Organizer"
                         })
                         setReviewModalOpen(true)
