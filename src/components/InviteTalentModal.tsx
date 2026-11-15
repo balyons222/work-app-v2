@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/src/utils/supabase/client'
 import toast from 'react-hot-toast'
-import { sendNotification } from '@/src/utils/notifications'
+import { notify } from '@/src/utils/notifications'
 
 // ✅ Added jobId and jobTitle as optional props
 export default function InviteTalentModal({ 
@@ -61,18 +61,8 @@ export default function InviteTalentModal({
         toast.error("Invite failed")
       }
     } else {
-      // 2. Trigger Notification with specific message
-      const msg = jobTitle 
-        ? `You have been invited to apply for the '${jobTitle}' role.` 
-        : "You have been invited to an exclusive event."
-
-      await sendNotification({
-        userId: talentId,
-        title: "You're Invited! 🎟️",
-        message: msg,
-        link: "/dashboard",
-        type: "info"
-      })
+      // 2. Notify the invitee (server verifies the invitation and writes the message)
+      notify({ kind: 'invite', eventId, inviteeId: talentId, jobId: jobId || null })
 
       toast.success("Invitation sent!")
       setResults(prev => prev.filter(p => p.id !== talentId))

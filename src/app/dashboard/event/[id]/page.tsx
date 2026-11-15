@@ -5,7 +5,7 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-import { sendNotification } from '@/src/utils/notifications'
+import { notify } from '@/src/utils/notifications'
 import InviteTalentModal from '@/src/components/InviteTalentModal' 
 import ChatWindow from '@/src/components/ChatWindow' 
 import ReleasePayoutButton from '@/src/components/ReleasePayoutButton'
@@ -329,7 +329,7 @@ export default function EventManagerPage() {
     if (error) toast.error(error.message)
     else {
       toast.success('Review Submitted!')
-      await sendNotification({ userId: reviewTarget.userId, title: "New Review! ⭐", message: `New review received!`, link: `/profile/${reviewTarget.userId}`, type: "success" })
+      notify({ kind: 'review', jobId: reviewTarget.jobId, revieweeId: reviewTarget.userId })
       setReviewModalOpen(false); loadEventData()
     }
   }
