@@ -529,48 +529,91 @@ export type Database = {
       }
       payouts: {
         Row: {
-          id: string
           application_id: string | null
-          job_id: string | null
           contractor_id: string | null
+          created_at: string
+          gross_amount: number
+          id: string
+          job_id: string | null
+          net_amount: number
           organizer_id: string | null
+          platform_fee: number
+          status: string
           stripe_payment_intent_id: string | null
           stripe_transfer_id: string | null
-          gross_amount: number
-          platform_fee: number
-          net_amount: number
-          status: string
-          created_at: string
         }
         Insert: {
-          id?: string
           application_id?: string | null
-          job_id?: string | null
           contractor_id?: string | null
+          created_at?: string
+          gross_amount: number
+          id?: string
+          job_id?: string | null
+          net_amount: number
           organizer_id?: string | null
+          platform_fee: number
+          status?: string
           stripe_payment_intent_id?: string | null
           stripe_transfer_id?: string | null
-          gross_amount: number
-          platform_fee: number
-          net_amount: number
-          status?: string
-          created_at?: string
         }
         Update: {
-          id?: string
           application_id?: string | null
-          job_id?: string | null
           contractor_id?: string | null
+          created_at?: string
+          gross_amount?: number
+          id?: string
+          job_id?: string | null
+          net_amount?: number
           organizer_id?: string | null
+          platform_fee?: number
+          status?: string
           stripe_payment_intent_id?: string | null
           stripe_transfer_id?: string | null
-          gross_amount?: number
-          platform_fee?: number
-          net_amount?: number
-          status?: string
-          created_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "payouts_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: true
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payouts_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "my_profile"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payouts_contractor_id_fkey"
+            columns: ["contractor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payouts_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payouts_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "my_profile"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payouts_organizer_id_fkey"
+            columns: ["organizer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       payouts_ledger: {
         Row: {
