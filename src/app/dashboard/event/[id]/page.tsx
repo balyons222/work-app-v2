@@ -73,7 +73,7 @@ export default function EventManagerPage() {
     const cleanPath = pathname || `/dashboard/event/${eventId}`
 
     if (fundedParam === 'true') {
-      const toastId = toast.loading('Verifying escrow payment...')
+      const toastId = toast.loading('Verifying payment...')
 
       // Poll the specific application that was just funded (stored before the Stripe redirect).
       // Previously this matched ANY funded app on the event, so it "succeeded" instantly once one existed.
@@ -93,7 +93,7 @@ export default function EventManagerPage() {
           clearInterval(pollInterval)
           try { sessionStorage.removeItem('pendingFundAppId') } catch {}
           if (isFunded) {
-            toast.success('Payment received! Escrow funds are securely held.', { id: toastId, duration: 5000 })
+            toast.success('Payment received! Stripe is holding it until you release it.', { id: toastId, duration: 5000 })
           } else {
             toast('Payment is still processing. Refresh in a moment to see the updated status.', { id: toastId, icon: '⏳', duration: 6000 })
           }
@@ -106,7 +106,7 @@ export default function EventManagerPage() {
 
     } else if (fundedParam === 'cancelled') {
       try { sessionStorage.removeItem('pendingFundAppId') } catch {}
-      toast.error('Escrow checkout was cancelled.')
+      toast.error('Checkout was cancelled.')
       router.replace(cleanPath)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -271,7 +271,7 @@ export default function EventManagerPage() {
         (existing.rate_type || 'flat') !== rateType ||
         (rateType === 'hourly' && existing.estimated_hours !== hoursNum)
       )
-      if (hasEscrow && payChanged) return toast.error('Pay terms are locked while escrow is funded for this role.')
+      if (hasEscrow && payChanged) return toast.error('Pay terms are locked while a payment is held for this role.')
     }
 
    if (!editingJobId && userTier !== 'organizer_pro' && userTier !== 'organizer') {
@@ -310,7 +310,7 @@ export default function EventManagerPage() {
     // FIX: Block deletion of orphaned escrow funds
     const job = jobs.find(j => j.id === jobId)
     const hasFundedApps = job?.applications?.some((a: any) => a.funding_status === 'funded' && a.payment_status !== 'paid')
-    if (hasFundedApps) return toast.error('Release or refund escrow before deleting this role.')
+    if (hasFundedApps) return toast.error('Release or refund the held payment before deleting this role.')
 
     if (!confirm('Are you sure you want to delete this job?')) return
     const { error } = await supabase.from('jobs').delete().eq('id', jobId)
@@ -580,7 +580,7 @@ export default function EventManagerPage() {
                                     className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                     title={!canBePaid ? 'This contractor hasn’t set up their payouts yet.' : `Labor: $${laborCost.toFixed(2)} + ${feePercentLabel(userTier)} Platform Fee: $${platformFee.toFixed(2)}`}
                                   >
-                                    {isFunding === app.id ? 'Processing...' : `Hire & Fund Escrow ($${totalToFund.toFixed(2)})`}
+                                    {isFunding === app.id ? 'Processing...' : `Hire & Pay ($${totalToFund.toFixed(2)})`}
                                   </button>
                                 </div>
                               )}
@@ -589,7 +589,7 @@ export default function EventManagerPage() {
                               {app.status === 'approved' && app.funding_status === 'funded' && app.payment_status !== 'paid' && (
                                 <div className="flex items-center gap-2">
                                   <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
-                                    🔒 In Escrow
+                                    🔒 Payment Held
                                   </span>
                                   
                                   {job.rate_type === 'hourly' && (app.actual_hours === null || app.actual_hours === undefined) ? (
@@ -605,7 +605,7 @@ export default function EventManagerPage() {
                               {/* 3. Approved but Unfunded Edge Case */}
                               {app.status === 'approved' && app.funding_status !== 'funded' && app.payment_status !== 'paid' && (
                                 <button onClick={() => handleHireAndFund(app.id)} disabled={!canBePaid || isFunding === app.id} className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 disabled:opacity-50">
-                                  ⚠️ Fund Escrow (${totalToFund.toFixed(2)})
+                                  ⚠️ Fund Payment (${totalToFund.toFixed(2)})
                                 </button>
                               )}
                               

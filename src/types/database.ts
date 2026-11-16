@@ -660,6 +660,7 @@ export type Database = {
       profiles: {
         Row: {
           accepted_tos_at: string | null
+          age_confirmed_at: string | null
           account_type: string | null
           avatar_url: string | null
           bio: string | null
@@ -698,6 +699,7 @@ export type Database = {
         }
         Insert: {
           accepted_tos_at?: string | null
+          age_confirmed_at?: string | null
           account_type?: string | null
           avatar_url?: string | null
           bio?: string | null
@@ -736,6 +738,7 @@ export type Database = {
         }
         Update: {
           accepted_tos_at?: string | null
+          age_confirmed_at?: string | null
           account_type?: string | null
           avatar_url?: string | null
           bio?: string | null
@@ -851,6 +854,7 @@ export type Database = {
       my_profile: {
         Row: {
           accepted_tos_at: string | null
+          age_confirmed_at: string | null
           account_type: string | null
           avatar_url: string | null
           bio: string | null
@@ -889,6 +893,7 @@ export type Database = {
         }
         Insert: {
           accepted_tos_at?: string | null
+          age_confirmed_at?: string | null
           account_type?: string | null
           avatar_url?: string | null
           bio?: string | null
@@ -927,6 +932,7 @@ export type Database = {
         }
         Update: {
           accepted_tos_at?: string | null
+          age_confirmed_at?: string | null
           account_type?: string | null
           avatar_url?: string | null
           bio?: string | null

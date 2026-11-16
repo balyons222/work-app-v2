@@ -66,7 +66,7 @@ export async function POST(req: Request) {
     
     if (!canReceive) {
       return NextResponse.json({ 
-        error: 'Cannot fund escrow: This contractor’s Stripe account cannot currently receive transfers and payouts.' 
+        error: 'Cannot take payment: This contractor’s Stripe account cannot currently receive transfers and payouts.' 
       }, { status: 400 })
     }
 
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
     const amountInCents = laborCents + feeCents
 
     if (amountInCents < 50) {
-      return NextResponse.json({ error: 'Total escrow amount must be at least $0.50' }, { status: 400 })
+      return NextResponse.json({ error: 'Total payment must be at least $0.50' }, { status: 400 })
     }
 
     // 7. Environment & Unified URL Configuration (Trailing slash fixed)
@@ -110,7 +110,7 @@ export async function POST(req: Request) {
           price_data: {
             currency: 'usd',
             product_data: {
-              name: `Escrow Funding: ${job.title}`,
+              name: `Contractor payment: ${job.title}`,
               description: `Labor: $${(laborCents / 100).toFixed(2)} + Platform Fee (${Math.round(feeRate * 100)}%): $${(feeCents / 100).toFixed(2)}\nContractor: ${contractor.full_name}`,
             },
             unit_amount: amountInCents,

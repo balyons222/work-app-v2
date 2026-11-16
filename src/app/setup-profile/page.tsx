@@ -63,6 +63,8 @@ function ProfileForm() {
   const [role, setRole] = useState('contractor')
   // Account type is permanent once chosen (also enforced by a DB trigger); changes go through support
   const [lockedRole, setLockedRole] = useState<string | null>(null)
+  const [ageConfirmedAt, setAgeConfirmedAt] = useState<string | null>(null)
+  const [ageChecked, setAgeChecked] = useState(false)
   const [bio, setBio] = useState('')
   const [city, setCity] = useState('')
   const [state, setState] = useState('')
@@ -87,6 +89,7 @@ function ProfileForm() {
         if (data) {
           setFullName(data.full_name || '')
           setPhone(data.phone || '')
+          setAgeConfirmedAt(data.age_confirmed_at || null)
           const existingRole = data.role?.toLowerCase() || null
           if (existingRole) {
             setLockedRole(existingRole)
@@ -147,6 +150,7 @@ function ProfileForm() {
 
   const handleSaveBasicInfo = async () => {
     if (!fullName || !phone) return toast.error('Name and phone are required')
+    if (!ageConfirmedAt && !ageChecked) return toast.error('You must be 18 or older to use FxD Events.')
     setLoading(true)
 
     try {
@@ -172,10 +176,12 @@ function ProfileForm() {
       const finalReferralCode = myReferralCode || generateReferralCode()
       if (!myReferralCode) setMyReferralCode(finalReferralCode)
 
+      const confirmedAt = ageConfirmedAt || new Date().toISOString()
       const { error } = await saveOwnProfile(supabase, {
           id: user.id,
           full_name: fullName,
           phone,
+          ...(ageConfirmedAt ? {} : { age_confirmed_at: confirmedAt }),
           ...(lockedRole ? {} : { role }),
           avatar_url: avatarUrl,
           referred_by: finalReferredBy,
@@ -184,6 +190,7 @@ function ProfileForm() {
         })
 
       if (error) throw error
+      setAgeConfirmedAt(confirmedAt)
       setStep(2)
     } catch (err: any) {
       toast.error(err.message || 'Failed to save basic info')
@@ -298,9 +305,21 @@ function ProfileForm() {
               )}
             </div>
             
+            {!ageConfirmedAt && (
+              <label className="flex items-start gap-3 bg-slate-50 p-3 rounded-lg border border-slate-100 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={ageChecked}
+                  onChange={(e) => setAgeChecked(e.target.checked)}
+                  className="mt-1"
+                />
+                <span className="text-sm text-slate-600">I confirm I am 18 years of age or older.</span>
+              </label>
+            )}
+
             <button 
               onClick={handleSaveBasicInfo} 
-              disabled={!fullName || !phone || loading} 
+              disabled={!fullName || !phone || (!ageConfirmedAt && !ageChecked) || loading} 
               className="w-full bg-primary text-white font-bold py-4 rounded-xl disabled:opacity-50 hover:bg-slate-800 transition-all"
             >
               {loading ? 'Saving...' : 'Continue'}

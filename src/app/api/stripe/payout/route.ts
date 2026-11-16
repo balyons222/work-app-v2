@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     // 2. Ownership & state checks
     if (!job || job.organizer_id !== user.id) throw new PayoutError('Forbidden. You do not own this job.', 403)
     if (app.payment_status === 'paid') throw new PayoutError('This contractor has already been paid.')
-    if (app.funding_status !== 'funded') throw new PayoutError('Cannot release: escrow has not been funded.')
+    if (app.funding_status !== 'funded') throw new PayoutError('Cannot release: this job has not been paid for yet.')
     if (app.status !== 'approved') throw new PayoutError('Only approved (hired) applications can be paid out.')
 
     // 3. Resolve the escrow charge (older rows may predate stripe_charge_id being stored)
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       const pi = await stripe.paymentIntents.retrieve(app.stripe_payment_intent_id)
       chargeId = (pi.latest_charge as string) || null
     }
-    if (!chargeId) throw new PayoutError('No escrow charge found for this application. Please contact support.')
+    if (!chargeId) throw new PayoutError('No payment found for this application. Please contact support.')
 
     // 4. What was actually funded. Never trust the live job rate/hours for the cap.
     let fundedLaborCents: number = app.funded_labor_cents
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
     if (payoutCents <= 0) throw new PayoutError('Payout amount must be greater than zero.')
     if (payoutCents > fundedLaborCents) {
       throw new PayoutError(
-        'The logged hours exceed the funded escrow. Reduce the hours to the funded amount or fund the difference separately.',
+        'The logged hours exceed the payment held. Reduce the hours to the funded amount or fund the difference separately.',
         400, 'OVERTIME_EXCEEDS_ESCROW'
       )
     }
@@ -122,7 +122,7 @@ export async function POST(req: Request) {
       .update({
         payment_status: 'paid',
         funding_status: 'released',
-        payment_method: 'Stripe Escrow Release',
+        payment_method: 'Stripe payout',
         stripe_transfer_id: transfer.id,
       })
       .eq('id', app.id)
@@ -200,7 +200,7 @@ export async function POST(req: Request) {
             <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px;">
               <h2 style="color: #4f46e5;">Payment Released! 🎉</h2>
               <p>Hi ${firstName},</p>
-              <p>Great news! The organizer has released the escrow funds for your work at <strong>${escapeHtml(eventTitle)}</strong>.</p>
+              <p>Great news! The organizer has released the payment for your work at <strong>${escapeHtml(eventTitle)}</strong>.</p>
               <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
                 <p style="margin: 0; font-size: 14px; color: #64748b; text-transform: uppercase; font-weight: bold;">Amount Transferred</p>
                 <p style="margin: 4px 0 0 0; font-size: 24px; font-weight: 900; color: #0f172a;">$${(payoutCents / 100).toFixed(2)}</p>

@@ -67,7 +67,7 @@ export default function LogHoursModal({ applicationId, contractorName, hourlyRat
             <span>${hourlyRate}/hr</span>
           </div>
           <div className="flex justify-between text-sm mb-3 text-slate-500">
-            <span>Escrow Funded For</span>
+            <span>Payment Held For</span>
             <span>{estimatedHours} hrs</span>
           </div>
           <div className="flex justify-between font-black text-lg border-t border-slate-200 pt-3">
@@ -78,7 +78,7 @@ export default function LogHoursModal({ applicationId, contractorName, hourlyRat
           </div>
           {parseFloat(actualHours) > estimatedHours && (
             <p className="text-xs text-red-500 mt-2 font-bold bg-red-50 p-2 rounded">
-              ⚠️ Warning: This exceeds the funded escrow amount.
+              ⚠️ Warning: This exceeds the payment held for this job.
             </p>
           )}
         </div>

@@ -44,7 +44,7 @@ export default function LandingPage() {
           </h1>
           
           <p className="text-lg md:text-xl text-slate-500 mb-12 max-w-2xl mx-auto leading-relaxed">
-            Connect with top-tier local talent, manage shifts, and handle payments securely through our automated escrow engine. 
+            Connect with top-tier local talent, manage shifts, and pay securely through Stripe. 
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -70,8 +70,8 @@ export default function LandingPage() {
               <div className="w-12 h-12 bg-green-100 text-green-600 rounded-2xl flex items-center justify-center mb-6">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
               </div>
-              <h3 className="text-xl font-bold text-slate-900">Escrow Protection</h3>
-              <p className="text-slate-500 leading-relaxed">Funds are securely locked in Stripe Escrow before the shift begins. Organizers know the talent is committed, and talent knows the money is guaranteed.</p>
+              <h3 className="text-xl font-bold text-slate-900">Payment Up Front</h3>
+              <p className="text-slate-500 leading-relaxed">Organizers pay when they hire, and Stripe holds the payment until the organizer releases it after the work is done. Talent knows the money has been set aside before the shift begins.</p>
             </div>
             
             <div className="space-y-4">
@@ -110,7 +110,7 @@ export default function LandingPage() {
               </li>
               <li className="flex items-center gap-3">
                 <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-sm">✓</div>
-                Fund escrow via credit card safely via Stripe
+                Pay securely by card through Stripe
               </li>
             </ul>
             <Link href="/login" className="inline-block bg-emerald-500 text-slate-900 font-bold px-6 py-3 rounded-lg hover:bg-emerald-400 transition-colors">
@@ -120,9 +120,9 @@ export default function LandingPage() {
           
           <div className="bg-slate-800 p-8 rounded-3xl border border-slate-700">
              <span className="text-indigo-400 font-black tracking-widest uppercase text-xs mb-4 block">For Contractors</span>
-             <h2 className="text-3xl font-black mb-6">Never worry about getting paid again.</h2>
+             <h2 className="text-3xl font-black mb-6">Know the money is there before you work.</h2>
              <p className="text-slate-400 mb-8 leading-relaxed">
-               When you get hired on FxD Events, the client's money is locked in our secure escrow vault. The moment the event ends, your payout is automatically released to your bank account.
+               When you're hired on FxD Events, the organizer pays up front and Stripe holds the payment. Once the organizer confirms your hours, it's released to your Stripe account and paid out to your bank.
              </p>
              <div className="bg-slate-900 p-6 rounded-2xl border border-slate-700">
                <div className="flex justify-between items-center mb-2">
