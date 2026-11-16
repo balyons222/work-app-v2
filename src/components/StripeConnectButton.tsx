@@ -18,12 +18,10 @@ export default function StripeConnectButton({ isConnected }: { isConnected: bool
         method: 'POST',
       })
 
-      // FIX: Check if the response is actually OK before trying to parse JSON
+      const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`)
+        throw new Error(data.error || `Server error: ${response.status}`)
       }
-
-      const data = await response.json()
 
       if (data.url) {
         window.location.href = data.url
@@ -33,8 +31,8 @@ export default function StripeConnectButton({ isConnected }: { isConnected: bool
         toast.error(data.error || 'Failed to connect to Stripe')
         setLoading(false) // Reset on soft error
       }
-    } catch (error) {
-      toast.error('Network error connecting to Stripe')
+    } catch (error: any) {
+      toast.error(error?.message || 'Network error connecting to Stripe')
       setLoading(false) // Reset on hard error
     }
   }

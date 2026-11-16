@@ -176,15 +176,15 @@ useEffect(() => {
     const toastId = toast.loading('Opening billing portal...')
     try {
       const response = await fetch('/api/stripe/portal', { method: 'POST' })
-      const data = await response.json()
-      
+      const data = await response.json().catch(() => ({}))
+
       if (data.url) {
         window.location.href = data.url
       } else {
-        throw new Error('Could not load portal')
+        throw new Error(data.error || 'Billing portal is temporarily unavailable.')
       }
-    } catch (error) {
-      toast.error('Billing portal not available. Try upgrading first!', { id: toastId })
+    } catch (error: any) {
+      toast.error(error?.message || 'Billing portal is temporarily unavailable.', { id: toastId })
     }
   }
 

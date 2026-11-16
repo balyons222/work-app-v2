@@ -60,18 +60,33 @@ export async function POST(request: Request) {
         // FIX: Explicitly request transfers and inject metadata for webhook safety
         capabilities: { transfers: { requested: true } },
         metadata: { supabase_user_id: userId },
+      }, {
+        // Double-clicks / parallel tabs get the SAME account back from Stripe instead of a duplicate
+        idempotencyKey: `connect-account-${userId}-${profile.stripe_account_id ?? 'none'}`,
       });
-      
-      stripeAccountId = account.id;
 
-      // FIX: Strictly catch database update failures so we don't strand the user
-      const { error: saveError } = await supabaseAdmin
+      // Save only if nobody else saved an account in the meantime (compare-and-set)
+      const previous = profile.stripe_account_id;
+      let save = supabaseAdmin
         .from('profiles')
-        .update({ stripe_account_id: stripeAccountId })
+        .update({ stripe_account_id: account.id })
         .eq('id', userId);
-        
+      save = previous ? save.eq('stripe_account_id', previous) : save.is('stripe_account_id', null);
+      const { data: saved, error: saveError } = await save.select('stripe_account_id');
+
       if (saveError) {
         throw new Error(`Failed to save Stripe account: ${saveError.message}`);
+      }
+
+      if (saved && saved.length > 0) {
+        stripeAccountId = account.id;
+      } else {
+        // Another request won the race: use the account it saved
+        const { data: current } = await supabaseAdmin
+          .from('profiles').select('stripe_account_id').eq('id', userId).single();
+        if (!current?.stripe_account_id) throw new Error('Failed to save Stripe account');
+        stripeAccountId = current.stripe_account_id;
+        console.warn(`[Stripe API] Concurrent onboarding: unused account ${account.id} for user ${userId}`);
       }
     }
 

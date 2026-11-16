@@ -35,6 +35,18 @@ export async function POST(req: Request) {
       }, { status: 400 })
     }
 
+    // Reuse the saved Stripe customer only if it exists for this key's mode (test vs live)
+    let customerId: string | null = profile?.stripe_customer_id ?? null
+    if (customerId) {
+      try {
+        const existing = await stripe.customers.retrieve(customerId)
+        if ((existing as Stripe.DeletedCustomer).deleted) customerId = null
+      } catch (err: any) {
+        if (err?.code === 'resource_missing') customerId = null
+        else throw err
+      }
+    }
+
     const origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') || req.headers.get('origin') || 'http://localhost:3000'
 
     const session = await stripe.checkout.sessions.create({
@@ -46,9 +58,7 @@ export async function POST(req: Request) {
       cancel_url: `${origin}/pricing`,
       client_reference_id: user.id, // Tells the webhook who bought this
       // Reuse the existing Stripe customer so billing history stays in one place
-      ...(profile?.stripe_customer_id
-        ? { customer: profile.stripe_customer_id }
-        : { customer_email: user.email }),
+      ...(customerId ? { customer: customerId } : { customer_email: user.email }),
       // Informational only — the webhook re-derives the tier from the price actually paid
       metadata: { plan_tier: tier },
     })
