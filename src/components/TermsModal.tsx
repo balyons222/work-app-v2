@@ -49,6 +49,9 @@ export default function TermsModal({ userId, onAccept, onClose }: { userId: stri
         >
           <p className="font-bold text-slate-900">Please read carefully before proceeding.</p>
           
+          <h3 className="font-bold text-slate-900">Eligibility</h3>
+          <p>You must be at least 18 years old to use FxD Events. By accepting, you confirm that you are.</p>
+
           <h3 className="font-bold text-slate-900">1. Independent Contractor Relationship</h3>
           <p>By using FxD Events, you acknowledge that you are an Independent Contractor, not an employee of the Platform or the Organizer. You are responsible for your own taxes, insurance, and tools. You have no expectation of benefits, workers' compensation, or unemployment insurance from FxD Events.</p>
 

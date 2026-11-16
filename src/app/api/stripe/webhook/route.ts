@@ -162,7 +162,7 @@ export async function POST(req: Request) {
                   <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; color: #333;">
                     <h2>Great news, ${escapeHtml(profile.full_name || 'there')}!</h2>
                     <p>You have been officially hired for <strong>${escapeHtml(jobTitle)}</strong> at <strong>${escapeHtml(eventTitle)}</strong>.</p>
-                    <p>The organizer has successfully funded the escrow for this shift, and the money is securely locked in.</p>
+                    <p>The organizer has paid for this shift, and Stripe is holding the payment until it's released after the work is done.</p>
                     <p style="margin-top: 32px;">
                       <a href="${process.env.NEXT_PUBLIC_SITE_URL}/dashboard" style="background-color: #000; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
                         View Details & Chat
@@ -208,7 +208,7 @@ export async function POST(req: Request) {
                   .insert({
                     conversation_id: chatId,
                     sender_id: organizerId, 
-                    content: `Hi! You are officially hired and the escrow has been funded for this shift. Let me know if you have any questions before the event! 🚀`
+                    content: `Hi! You are officially hired and the payment for this shift is being held by Stripe. Let me know if you have any questions before the event! 🚀`
                   })
               }
             }

@@ -88,7 +88,7 @@ export default function SortableRoster({ initialRoster }: { initialRoster: any[]
             className="bg-gray-50 border border-gray-200 text-gray-900 text-sm font-bold rounded-lg focus:ring-primary focus:border-primary block p-2 outline-none"
           >
             <option value="earned_desc">Highest Paid (YTD)</option>
-            <option value="pending_desc">Highest Pending/Escrow</option>
+            <option value="pending_desc">Highest Pending/Held</option>
             <option value="past_shifts_desc">Most Past Shifts</option>
             <option value="upcoming_desc">Most Upcoming Shifts</option>
             <option value="name_asc">Name (A-Z)</option>
@@ -143,7 +143,7 @@ export default function SortableRoster({ initialRoster }: { initialRoster: any[]
                   <p className="text-xl font-black text-green-600">${contractor.totalEarned}</p>
                 </div>
                 <div className="p-4 flex flex-col justify-center">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Unpaid / Escrow</p>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Unpaid / Held</p>
                   <p className="text-xl font-black text-amber-500">${contractor.pendingPayments}</p>
                 </div>
                 <div className="p-4 flex flex-col justify-center">
