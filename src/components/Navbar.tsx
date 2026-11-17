@@ -136,6 +136,8 @@ export default function Navbar() {
               </>
             ) : (
               <div className="flex items-center space-x-4">
+                <Link href="/jobs" className={`${textColor} font-bold hover:text-secondary transition-colors`}>Find Work</Link>
+                <Link href="/pricing" className={`${textColor} font-bold hover:text-secondary transition-colors pr-4`}>Pricing</Link>
                 <Link 
                   href="/login" 
                   className="bg-black text-white px-6 py-2.5 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-md"
@@ -188,6 +190,8 @@ export default function Navbar() {
               </>
             ) : (
               <div className="space-y-3 p-4">
+                <Link href="/jobs" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-3 rounded-md text-base font-bold text-slate-700 hover:text-primary hover:bg-slate-50">Find Work</Link>
+                <Link href="/pricing" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-3 rounded-md text-base font-bold text-slate-700 hover:text-primary hover:bg-slate-50">Pricing</Link>
                 <Link 
                   href="/login" 
                   onClick={() => setIsMobileMenuOpen(false)}
