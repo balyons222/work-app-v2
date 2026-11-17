@@ -13,7 +13,8 @@ export default function MyApplications() {
   const [loading, setLoading] = useState(true)
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
   const [selectedJob, setSelectedJob] = useState<any>(null)
-  
+  const [reviewedJobIds, setReviewedJobIds] = useState<Set<string>>(new Set())
+
   const supabase = createClient()
   const router = useRouter()
 
@@ -36,7 +37,14 @@ export default function MyApplications() {
 
     if (error) console.error(error)
     else setApplications(data || [])
-    
+
+    // Jobs this contractor has already reviewed, so "Write Review" only shows once per job
+    const { data: myReviews } = await supabase
+      .from('reviews')
+      .select('job_id')
+      .eq('reviewer_id', user.id)
+    setReviewedJobIds(new Set((myReviews || []).map((r: any) => r.job_id)))
+
     setLoading(false)
   }
 
@@ -57,7 +65,11 @@ export default function MyApplications() {
           </div>
         ) : (
           <div className="space-y-4">
-            {applications.map((app) => (
+            {applications.map((app) => {
+              // Hiring through Stripe sets status 'approved'; 'hired' is legacy from the old status dropdown
+              const isHired = app.status === 'approved' || app.status === 'hired'
+              const canReview = isHired && app.payment_status === 'paid' && !reviewedJobIds.has(app.job_id)
+              return (
               <div key={app.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
                 
                 {/* Left Side: Job Info */}
@@ -102,19 +114,20 @@ export default function MyApplications() {
                 {/* Right Side: Status & Actions */}
                 <div className="flex flex-col items-end gap-3">
                   <span className={`px-4 py-2 rounded-full text-sm font-bold border ${
-                    app.status === 'hired' ? 'bg-green-100 text-green-700 border-green-200' :
+                    isHired ? 'bg-green-100 text-green-700 border-green-200' :
                     app.status === 'rejected' ? 'bg-red-50 text-red-600 border-red-200' :
                     app.status === 'contacted' ? 'bg-slate-50 text-primary border-blue-200' :
                     'bg-yellow-50 text-yellow-700 border-yellow-200'
                   }`}>
-                    {app.status === 'hired' ? '🎉 Hired' : 
+                    {app.payment_status === 'paid' ? '✓ Paid' :
+                     isHired ? '🎉 Hired' :
                      app.status === 'rejected' ? '❌ Rejected' : 
                      app.status === 'contacted' ? '📞 Contacted' : 
                      '⏳ Pending'}
                   </span>
 
-                  {/* Review Button (Only if Hired) */}
-                  {app.status === 'hired' && (
+                  {/* Review Button (once the job is paid, one review per job) */}
+                  {canReview && (
                     <button
                         onClick={() => {
                         setSelectedJob({
@@ -132,7 +145,8 @@ export default function MyApplications() {
                 </div>
 
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
@@ -144,7 +158,7 @@ export default function MyApplications() {
             jobId={selectedJob.jobId}
             targetId={selectedJob.targetId}
             targetName={selectedJob.targetName}
-            onSuccess={() => {}}
+            onSuccess={() => setReviewedJobIds(prev => new Set(prev).add(selectedJob.jobId))}
           />
         )}
       </div>
