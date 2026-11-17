@@ -109,7 +109,7 @@ export default function LoginPage() {
                 className="mt-1"
               />
               <label htmlFor="consent" className="text-xs text-slate-500 leading-relaxed">
-                I agree to receive SMS verification codes from FxD Event Staffing. Message and data rates may apply. Reply STOP to cancel. Mobile data will not be shared with third parties for marketing purposes. See our <a href="/privacy" className="underline hover:text-primary">Privacy Policy</a>.
+                I agree to receive SMS verification codes from FxD Event Staffing. One message per sign-in request. Message and data rates may apply. Reply STOP to cancel, HELP for help. Mobile data will not be shared with third parties for marketing purposes. See our <a href="/sms-terms" className="underline hover:text-primary">SMS Terms</a> and <a href="/privacy" className="underline hover:text-primary">Privacy Policy</a>.
               </label>
             </div>
 
