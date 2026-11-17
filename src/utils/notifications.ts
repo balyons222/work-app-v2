@@ -4,6 +4,7 @@ export type NotifyEvent =
   | { kind: 'new_applicant'; jobId: string }
   | { kind: 'review'; jobId: string; revieweeId: string }
   | { kind: 'invite'; eventId: string; inviteeId: string; jobId?: string | null }
+  | { kind: 'invite_declined'; inviteId: string }
 
 export async function notify(event: NotifyEvent): Promise<boolean> {
   try {

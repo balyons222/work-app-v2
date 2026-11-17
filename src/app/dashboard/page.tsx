@@ -259,9 +259,17 @@ useEffect(() => {
 
   const handleDeleteEvent = async (eventId: string) => { if (!confirm("Are you sure?")) return; const { error } = await supabase.from('events').delete().eq('id', eventId); if (!error) { toast.success("Event deleted"); loadDashboardData(); } }
 
-  const handleInviteResponse = async (inviteId: string, response: 'accepted' | 'declined', targetId: string) => {
-    const { error } = await supabase.from('event_invitations').update({ status: response }).eq('id', inviteId)
-    if (!error) { if (response === 'accepted') { toast.success("Invite Accepted!"); router.push(`/events/${targetId}`) } else { toast.success("Invite Declined"); setInvites(current => current.filter(i => i.id !== inviteId)) } } else { toast.error("Error updating invite") }
+  // Viewing an invite doesn't accept it: applying does (the server marks the invitation accepted)
+  const handleViewInvite = (invite: any) => {
+    router.push(invite.job_id ? `/jobs/${invite.job_id}` : `/events/${invite.event_id}`)
+  }
+
+  const handleDeclineInvite = async (inviteId: string) => {
+    const { error } = await supabase.from('event_invitations').update({ status: 'declined' }).eq('id', inviteId)
+    if (error) return toast.error("Error updating invite")
+    toast.success("Invite declined")
+    setInvites(current => current.filter(i => i.id !== inviteId))
+    notify({ kind: 'invite_declined', inviteId })
   }
 
   const openReviewModal = (job: any) => { setReviewTarget({ jobId: job.id, organizerId: job.organizer_id, eventName: job.events?.title }); setRating(5); setComment(''); setReviewModalOpen(true) }
@@ -482,7 +490,7 @@ useEffect(() => {
                           No active invitations found.
                         </div>
                       ) : (
-                        <div className="bg-gradient-to-r from-purple-900 to-indigo-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
+                        <div className="bg-primary rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
                            <div className="relative z-10 grid gap-4 md:grid-cols-2">
                               {invites.map(invite => {
                                 const eventTitle = invite.events?.title || invite.jobs?.events?.title || 'Event'
@@ -490,19 +498,18 @@ useEffect(() => {
                                 const organizerName = invite.events?.profiles?.full_name || invite.jobs?.events?.profiles?.full_name || 'Organizer'
                                 const eventLocation = invite.events?.location || invite.jobs?.events?.location || 'TBD'
                                 const eventDate = invite.events?.event_date || invite.jobs?.events?.event_date
-                                const targetId = invite.events?.id || invite.jobs?.events?.id 
 
                                 return (
                                 <div key={invite.id} className="bg-white/10 backdrop-blur-sm p-4 rounded-xl border border-white/20 flex justify-between items-center">
                                   <div>
                                     <h3 className="font-bold text-lg text-white">{eventTitle}</h3>
-                                    {invite.jobs && <p className="text-indigo-200 text-sm mb-1">Role: <span className="font-bold text-white">{jobTitle}</span></p>}
-                                    <p className="text-xs text-indigo-300 font-bold uppercase mb-1">Hosted by: {organizerName}</p>
-                                    <p className="text-xs text-indigo-200">📍 {eventLocation} 📅 {eventDate ? new Date(eventDate).toLocaleDateString() : 'Date TBD'}</p>
+                                    {invite.jobs && <p className="text-slate-300 text-sm mb-1">Role: <span className="font-bold text-white">{jobTitle}</span></p>}
+                                    <p className="text-xs text-secondary font-bold uppercase mb-1">Hosted by: {organizerName}</p>
+                                    <p className="text-xs text-slate-300">📍 {eventLocation} 📅 {eventDate ? new Date(eventDate).toLocaleDateString() : 'Date TBD'}</p>
                                   </div>
                                   <div className="flex gap-2">
-                                    <button onClick={() => handleInviteResponse(invite.id, 'declined', targetId)} className="px-3 py-2 text-xs font-bold text-white/70 hover:bg-white/10 rounded-lg">Decline</button>
-                                    <button onClick={() => handleInviteResponse(invite.id, 'accepted', targetId)} className="px-4 py-2 text-xs font-bold bg-white text-indigo-900 rounded-lg">View & Apply</button>
+                                    <button onClick={() => handleDeclineInvite(invite.id)} className="px-3 py-2 text-xs font-bold text-white/70 hover:bg-white/10 rounded-lg">Decline</button>
+                                    <button onClick={() => handleViewInvite(invite)} className="px-4 py-2 text-xs font-bold bg-secondary text-primary rounded-lg hover:bg-secondary-hover">View & Apply</button>
                                   </div>
                                 </div>
                                 )
