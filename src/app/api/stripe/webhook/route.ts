@@ -16,60 +16,12 @@ const supabaseAdmin = createAdminClient()
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 
-export async function POST(req: Request) {
-  const body = await req.text()
-  const signature = req.headers.get('stripe-signature')
-  if (!signature) return new NextResponse('Missing stripe-signature header', { status: 400 })
-
-  // ========================================================
-  // 3. FIX: MULTI-SECRET VERIFICATION LOOP
-  // ========================================================
-  const secrets = [
-    process.env.STRIPE_WEBHOOK_SECRET,
-    process.env.STRIPE_CONNECT_WEBHOOK_SECRET,
-  ].filter(Boolean) as string[]
-
-  if (secrets.length === 0) {
-    console.error('❌ Webhook Error: no webhook secrets configured')
-    return new NextResponse('Webhook not configured', { status: 500 })
-  }
-
-  let event: Stripe.Event | null = null
-  let lastError = ''
-
-  for (const secret of secrets) {
-    try {
-      event = stripe.webhooks.constructEvent(body, signature, secret)
-      break // Stop if verification succeeds
-    } catch (err: any) {
-      lastError = err.message
-    }
-  }
-
-  if (!event) {
-    console.error(`❌ Webhook Error: ${lastError}`)
-    return new NextResponse(`Webhook Error: ${lastError}`, { status: 400 })
-  }
-
-  // ========================================================
-  // EVENT: CHECKOUT COMPLETED (Escrow OR Subscription)
-  // ========================================================
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as Stripe.Checkout.Session
-
-    // SCENARIO A: ESCROW FUNDING
-    if (session.metadata?.type === 'job_escrow_funding') {
-      if (session.payment_status !== 'paid') {
-        return new NextResponse('Not paid yet', { status: 200 })
-      }
-
-      const applicationId = session.metadata.application_id
-      const paymentIntentId = session.payment_intent as string
-      if (!applicationId || !paymentIntentId) {
-        console.error('Escrow session missing application_id or payment_intent:', session.id)
-        return new NextResponse('Malformed escrow session', { status: 200 }) // Retrying won't help
-      }
-
+// Marks an application funded (hired) once its payment has actually succeeded, then sends the
+// "You're hired" email and opening chat message. Shared by card checkout and direct bank (ACH) payments.
+async function fundEscrow(
+  { applicationId, paymentIntentId, amountCents, laborCents }:
+  { applicationId: string; paymentIntentId: string; amountCents: number | null; laborCents: number }
+): Promise<NextResponse> {
       let chargeId = ''
       try {
         const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
@@ -87,8 +39,8 @@ export async function POST(req: Request) {
           funding_status: 'funded',
           stripe_payment_intent_id: paymentIntentId,
           stripe_charge_id: chargeId,
-          funded_amount_cents: session.amount_total,
-          funded_labor_cents: parseInt(session.metadata.labor_cents || '0', 10),
+          funded_amount_cents: amountCents,
+          funded_labor_cents: laborCents,
         })
         .eq('id', applicationId)
         // Only transition from an unfunded state. The old `neq.funded` filter also matched 'released',
@@ -218,6 +170,71 @@ export async function POST(req: Request) {
             // If we return 500, Stripe will retry the webhook and duplicate the DB operations.
             console.error('Notification error:', notifErr.message)
           }
+  return new NextResponse('Escrow funded', { status: 200 })
+}
+
+export async function POST(req: Request) {
+  const body = await req.text()
+  const signature = req.headers.get('stripe-signature')
+  if (!signature) return new NextResponse('Missing stripe-signature header', { status: 400 })
+
+  // ========================================================
+  // 3. FIX: MULTI-SECRET VERIFICATION LOOP
+  // ========================================================
+  const secrets = [
+    process.env.STRIPE_WEBHOOK_SECRET,
+    process.env.STRIPE_CONNECT_WEBHOOK_SECRET,
+  ].filter(Boolean) as string[]
+
+  if (secrets.length === 0) {
+    console.error('❌ Webhook Error: no webhook secrets configured')
+    return new NextResponse('Webhook not configured', { status: 500 })
+  }
+
+  let event: Stripe.Event | null = null
+  let lastError = ''
+
+  for (const secret of secrets) {
+    try {
+      event = stripe.webhooks.constructEvent(body, signature, secret)
+      break // Stop if verification succeeds
+    } catch (err: any) {
+      lastError = err.message
+    }
+  }
+
+  if (!event) {
+    console.error(`❌ Webhook Error: ${lastError}`)
+    return new NextResponse(`Webhook Error: ${lastError}`, { status: 400 })
+  }
+
+  // ========================================================
+  // EVENT: CHECKOUT COMPLETED (Escrow OR Subscription)
+  // ========================================================
+  // Checkout is card-only. Bank (ACH) payments don't use Checkout: they charge the organizer's saved,
+  // verified business account directly and arrive as payment_intent.* events (below).
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object as Stripe.Checkout.Session
+
+    // SCENARIO A: ESCROW FUNDING
+    if (session.metadata?.type === 'job_escrow_funding') {
+      const applicationId = session.metadata.application_id
+      const paymentIntentId = session.payment_intent as string
+      if (!applicationId || !paymentIntentId) {
+        console.error('Escrow session missing application_id or payment_intent:', session.id)
+        return new NextResponse('Malformed escrow session', { status: 200 }) // Retrying won't help
+      }
+
+      if (session.payment_status !== 'paid') {
+        return new NextResponse('Not paid yet', { status: 200 })
+      }
+
+      return fundEscrow({
+        applicationId,
+        paymentIntentId,
+        amountCents: session.amount_total,
+        laborCents: parseInt(session.metadata.labor_cents || '0', 10),
+      })
     }
 
     // SCENARIO B: USER BUYING PRO SUBSCRIPTION
@@ -256,6 +273,64 @@ export async function POST(req: Request) {
       }
       return new NextResponse('Subscription activated successfully', { status: 200 })
     }
+  }
+
+  // ========================================================
+  // EVENT: BANK (ACH) PAYMENT CLEARED
+  // ========================================================
+  else if (event.type === 'payment_intent.succeeded') {
+    const pi = event.data.object as Stripe.PaymentIntent
+    // Only direct bank payments created by fund-job. Card checkouts are handled above.
+    if (pi.metadata?.type !== 'job_escrow_funding' || pi.metadata?.flow !== 'bank_direct' || !pi.metadata.application_id) {
+      return new NextResponse('Ignored', { status: 200 })
+    }
+    return fundEscrow({
+      applicationId: pi.metadata.application_id,
+      paymentIntentId: pi.id,
+      amountCents: pi.amount,
+      laborCents: parseInt(pi.metadata.labor_cents || '0', 10),
+    })
+  }
+
+  // ========================================================
+  // EVENT: BANK (ACH) PAYMENT FAILED
+  // ========================================================
+  else if (event.type === 'payment_intent.payment_failed') {
+    const pi = event.data.object as Stripe.PaymentIntent
+    if (pi.metadata?.type !== 'job_escrow_funding' || pi.metadata?.flow !== 'bank_direct' || !pi.metadata.application_id) {
+      return new NextResponse('Ignored', { status: 200 })
+    }
+    const applicationId = pi.metadata.application_id
+    const paymentIntentId = pi.id
+
+    // Only the payment that's actually pending on this hire; a stale failure can't touch a funded one
+    const { data: failed, error } = await supabaseAdmin
+      .from('applications')
+      .update({ funding_status: 'failed', stripe_payment_intent_id: null })
+      .eq('id', applicationId)
+      .eq('funding_status', 'processing')
+      .eq('stripe_payment_intent_id', paymentIntentId)
+      .select('id, jobs(title, event_id, organizer_id)')
+    if (error) {
+      console.error('Failed-payment DB update error:', error.message)
+      return new NextResponse('Database error', { status: 500 }) // Retry
+    }
+
+    if (failed && failed.length > 0) {
+      const job: any = Array.isArray((failed[0] as any).jobs) ? (failed[0] as any).jobs[0] : (failed[0] as any).jobs
+      if (job?.organizer_id) {
+        const { error: notifErr } = await supabaseAdmin.from('notifications').insert({
+          user_id: job.organizer_id,
+          title: 'Bank payment failed',
+          message: `The bank payment for ${job.title || 'a hire'} didn't go through. The contractor isn't hired yet. Pay again by card or bank to confirm them.`,
+          link: `/dashboard/event/${job.event_id}`,
+          type: 'info',
+          is_read: false,
+        })
+        if (notifErr) console.error('Failed-payment notification error:', notifErr.message)
+      }
+    }
+    return new NextResponse('Bank payment failure recorded', { status: 200 })
   }
 
   // ========================================================

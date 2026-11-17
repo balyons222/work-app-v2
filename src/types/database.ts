@@ -661,6 +661,16 @@ export type Database = {
         Row: {
           accepted_tos_at: string | null
           age_confirmed_at: string | null
+          ach_enabled: boolean
+          ach_bank_status: string | null
+          ach_bank_payment_method_id: string | null
+          ach_bank_mandate_id: string | null
+          ach_bank_name: string | null
+          ach_bank_last4: string | null
+          ach_bank_holder_type: string | null
+          ach_bank_owner_names: string | null
+          ach_bank_linked_at: string | null
+          ach_terms_accepted_at: string | null
           account_type: string | null
           avatar_url: string | null
           bio: string | null
@@ -700,6 +710,16 @@ export type Database = {
         Insert: {
           accepted_tos_at?: string | null
           age_confirmed_at?: string | null
+          ach_enabled?: boolean
+          ach_bank_status?: string | null
+          ach_bank_payment_method_id?: string | null
+          ach_bank_mandate_id?: string | null
+          ach_bank_name?: string | null
+          ach_bank_last4?: string | null
+          ach_bank_holder_type?: string | null
+          ach_bank_owner_names?: string | null
+          ach_bank_linked_at?: string | null
+          ach_terms_accepted_at?: string | null
           account_type?: string | null
           avatar_url?: string | null
           bio?: string | null
@@ -739,6 +759,16 @@ export type Database = {
         Update: {
           accepted_tos_at?: string | null
           age_confirmed_at?: string | null
+          ach_enabled?: boolean
+          ach_bank_status?: string | null
+          ach_bank_payment_method_id?: string | null
+          ach_bank_mandate_id?: string | null
+          ach_bank_name?: string | null
+          ach_bank_last4?: string | null
+          ach_bank_holder_type?: string | null
+          ach_bank_owner_names?: string | null
+          ach_bank_linked_at?: string | null
+          ach_terms_accepted_at?: string | null
           account_type?: string | null
           avatar_url?: string | null
           bio?: string | null
@@ -855,6 +885,16 @@ export type Database = {
         Row: {
           accepted_tos_at: string | null
           age_confirmed_at: string | null
+          ach_enabled: boolean | null
+          ach_bank_status: string | null
+          ach_bank_payment_method_id: string | null
+          ach_bank_mandate_id: string | null
+          ach_bank_name: string | null
+          ach_bank_last4: string | null
+          ach_bank_holder_type: string | null
+          ach_bank_owner_names: string | null
+          ach_bank_linked_at: string | null
+          ach_terms_accepted_at: string | null
           account_type: string | null
           avatar_url: string | null
           bio: string | null
@@ -894,6 +934,16 @@ export type Database = {
         Insert: {
           accepted_tos_at?: string | null
           age_confirmed_at?: string | null
+          ach_enabled?: boolean
+          ach_bank_status?: string | null
+          ach_bank_payment_method_id?: string | null
+          ach_bank_mandate_id?: string | null
+          ach_bank_name?: string | null
+          ach_bank_last4?: string | null
+          ach_bank_holder_type?: string | null
+          ach_bank_owner_names?: string | null
+          ach_bank_linked_at?: string | null
+          ach_terms_accepted_at?: string | null
           account_type?: string | null
           avatar_url?: string | null
           bio?: string | null
@@ -933,6 +983,16 @@ export type Database = {
         Update: {
           accepted_tos_at?: string | null
           age_confirmed_at?: string | null
+          ach_enabled?: boolean
+          ach_bank_status?: string | null
+          ach_bank_payment_method_id?: string | null
+          ach_bank_mandate_id?: string | null
+          ach_bank_name?: string | null
+          ach_bank_last4?: string | null
+          ach_bank_holder_type?: string | null
+          ach_bank_owner_names?: string | null
+          ach_bank_linked_at?: string | null
+          ach_terms_accepted_at?: string | null
           account_type?: string | null
           avatar_url?: string | null
           bio?: string | null

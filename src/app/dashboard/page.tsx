@@ -8,6 +8,7 @@ import { notify } from '@/src/utils/notifications'
 import TermsModal from '@/src/components/TermsModal'
 import ChatWindow from '@/src/components/ChatWindow'
 import StripeConnectButton from '@/src/components/StripeConnectButton'
+import BankPaymentsCard from '@/src/components/BankPaymentsCard'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 
@@ -597,6 +598,14 @@ useEffect(() => {
         {/* ORGANIZER DASHBOARD */}
         {profile?.role?.toLowerCase() === 'organizer' && (
           <div className="space-y-8">
+             {profile?.ach_enabled && activeTab !== 'reports' && (
+               <BankPaymentsCard
+                 bankStatus={profile.ach_bank_status}
+                 bankName={profile.ach_bank_name}
+                 bankLast4={profile.ach_bank_last4}
+                 onChange={loadDashboardData}
+               />
+             )}
              {activeTab === 'reports' ? (
                 <div className="space-y-6"><h2 className="text-xl font-black text-slate-900">Event Budget Analysis</h2>{events.map(event => (<div key={event.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"><div className="flex justify-between mb-4"><h3 className="font-bold text-lg">{event.title}</h3><span className={`text-xs font-bold px-2 py-1 rounded ${event.remaining_budget < 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>{event.remaining_budget < 0 ? 'OVER BUDGET' : 'On Track'}</span></div><div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden mb-2"><div className={`h-full ${event.remaining_budget < 0 ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${Math.min((event.committed_spend / (event.budget || 1)) * 100, 100)}%` }}></div></div><div className="flex justify-between text-xs font-bold text-slate-500"><span>Spent: ${event.committed_spend}</span><span>Budget: ${event.budget}</span></div></div>))}</div>
              ) : (

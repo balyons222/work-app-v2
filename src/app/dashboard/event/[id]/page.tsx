@@ -11,6 +11,7 @@ import ChatWindow from '@/src/components/ChatWindow'
 import ReleasePayoutButton from '@/src/components/ReleasePayoutButton'
 import LogHoursModal from '@/src/components/LogHoursModal'
 import { platformFeeRate, feePercentLabel } from '@/src/config/platformFees'
+import { ACH_MAX_CENTS } from '@/src/config/ach'
 
 const ROLE_CATEGORIES = {
   "Operations": ["General Event Support", "Site Lead", "Site Manager", "Finish Line Lead", "Start Line Lead", "Course Lead", "Vendor Manager", "Project Manager", "Equipment Operator", "Forklift Operator", "Truck Driver (nonCDL)", "Truck Driver (CDL)", "Electrician/Power", "Volunteer Coordinator", "Expo Lead", "Expo Support", "Warehouse Coordinator"],
@@ -30,6 +31,7 @@ export default function EventManagerPage() {
   }
   
   const [userTier, setUserTier] = useState<string>('basic')
+  const [canPayByBank, setCanPayByBank] = useState(false)
    
   const [isEditingEvent, setIsEditingEvent] = useState(false)
   const [eventFormData, setEventFormData] = useState({
@@ -84,16 +86,20 @@ export default function EventManagerPage() {
       const pollInterval = setInterval(async () => {
         attempts++
         let isFunded = false
+        let isBankProcessing = false
         if (pendingAppId) {
           const { data } = await supabase.from('applications').select('funding_status').eq('id', pendingAppId).maybeSingle()
           isFunded = data?.funding_status === 'funded'
+          isBankProcessing = data?.funding_status === 'processing'
         }
 
-        if (isFunded || attempts > 5) {
+        if (isFunded || isBankProcessing || attempts > 5) {
           clearInterval(pollInterval)
           try { sessionStorage.removeItem('pendingFundAppId') } catch {}
           if (isFunded) {
             toast.success('Payment received! Stripe is holding it until you release it.', { id: toastId, duration: 5000 })
+          } else if (isBankProcessing) {
+            toast('Bank payment submitted. It takes about 4 business days to clear, and the contractor is hired automatically once it does.', { id: toastId, icon: '🏦', duration: 8000 })
           } else {
             toast('Payment is still processing. Refresh in a moment to see the updated status.', { id: toastId, icon: '⏳', duration: 6000 })
           }
@@ -121,8 +127,12 @@ export default function EventManagerPage() {
       }
       setCurrentUserId(user.id)
 
-      const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', user.id).single()
-      if (profile) setUserTier(profile.plan_tier || 'basic')
+      // my_profile: the ACH columns are private (owner-only), not in the public profiles grants
+      const { data: profile } = await supabase.from('my_profile').select('plan_tier, ach_enabled, ach_bank_status').eq('id', user.id).single()
+      if (profile) {
+        setUserTier(profile.plan_tier || 'basic')
+        setCanPayByBank(!!profile.ach_enabled && profile.ach_bank_status === 'verified')
+      }
 
       const { data: eventData, error: eventError } = await supabase
         .from('events')
@@ -214,16 +224,24 @@ export default function EventManagerPage() {
     else { toast.success("Event updated!"); setIsEditingEvent(false); loadEventData() }
   }
 
-  const handleHireAndFund = async (appId: string) => {
+  const handleHireAndFund = async (appId: string, method: 'card' | 'bank' = 'card') => {
+    if (method === 'bank' && !confirm('Pay for this hire from your linked business bank account? It takes about 4 business days to clear, and the contractor is hired once it does.')) return
     setIsFunding(appId)
-    const toastId = toast.loading('Redirecting to Stripe checkout...')
+    const toastId = toast.loading(method === 'bank' ? 'Starting bank payment...' : 'Redirecting to Stripe checkout...')
     try {
       const res = await fetch('/api/stripe/fund-job', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ applicationId: appId })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ applicationId: appId, method })
       })
 
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to start funding session')
+
+      if (data.bank) {
+        toast('Bank payment submitted. It takes about 4 business days to clear, and the contractor is hired automatically once it does.', { id: toastId, icon: '🏦', duration: 8000 })
+        setIsFunding(null)
+        loadEventData()
+        return
+      }
 
       if (data.url) {
         try { sessionStorage.setItem('pendingFundAppId', appId) } catch {}
@@ -567,8 +585,18 @@ export default function EventManagerPage() {
                               </button>
                               
                               {/* 1. Pending: Offer Hire & Fund with Price Breakdown */}
-                              {app.status === 'pending' && (
+                              {/* Bank (ACH) payment submitted, waiting for it to clear */}
+                              {app.funding_status === 'processing' && (
+                                <span className="text-xs font-bold text-sky-700 bg-sky-50 border border-sky-200 px-2.5 py-1 rounded-lg" title="Bank payments take about 4 business days to clear. The contractor is hired automatically once it does.">
+                                  ⏳ Bank payment processing
+                                </span>
+                              )}
+
+                              {app.status === 'pending' && app.funding_status !== 'processing' && (
                                 <div className="flex items-center gap-2">
+                                  {app.funding_status === 'failed' && (
+                                    <span className="text-xs font-bold text-red-600">Bank payment failed. Try again:</span>
+                                  )}
                                   <button onClick={() => handleAppStatus(app.id, 'rejected')} className="px-3 py-1.5 text-xs font-bold text-red-500 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
                                     Decline
                                   </button>
@@ -582,6 +610,18 @@ export default function EventManagerPage() {
                                   >
                                     {isFunding === app.id ? 'Processing...' : `Hire & Pay ($${totalToFund.toFixed(2)})`}
                                   </button>
+
+                                  {/* Bank (ACH): only for organizers with a verified business account, under the cap */}
+                                  {canPayByBank && Math.round(totalToFund * 100) <= ACH_MAX_CENTS && (
+                                    <button
+                                      onClick={() => handleHireAndFund(app.id, 'bank')}
+                                      disabled={!canBePaid || isFunding === app.id}
+                                      className="px-3 py-1.5 text-xs font-bold text-primary bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title="Pay from your linked business bank account. Clears in about 4 business days."
+                                    >
+                                      🏦 Pay by bank
+                                    </button>
+                                  )}
                                 </div>
                               )}
                               
@@ -603,7 +643,7 @@ export default function EventManagerPage() {
                               )}
 
                               {/* 3. Approved but Unfunded Edge Case */}
-                              {app.status === 'approved' && app.funding_status !== 'funded' && app.payment_status !== 'paid' && (
+                              {app.status === 'approved' && app.funding_status !== 'funded' && app.funding_status !== 'processing' && app.payment_status !== 'paid' && (
                                 <button onClick={() => handleHireAndFund(app.id)} disabled={!canBePaid || isFunding === app.id} className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 disabled:opacity-50">
                                   ⚠️ Fund Payment (${totalToFund.toFixed(2)})
                                 </button>

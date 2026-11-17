@@ -67,6 +67,16 @@ export default function TermsModal({ userId, onAccept, onClose }: { userId: stri
           <h3 className="font-bold text-slate-900">5. Professional Conduct</h3>
           <p>You agree to maintain professional standards. Harassment, discrimination, or unsafe behavior will result in immediate termination from the platform.</p>
 
+          <h3 className="font-bold text-slate-900">6. Payments, Disputes &amp; Chargebacks</h3>
+          <p>Organizers pay for each hire through Stripe at the time of hiring. By paying, the Organizer confirms the payment is authorized and is for work the Organizer requested.</p>
+          <p>If an Organizer disputes, reverses, or charges back a payment for work that was performed, the Organizer remains responsible for the full amount, plus any dispute or return fees charged to FxD Events. FxD Events may recover that amount from the Organizer by any lawful means, suspend or close the Organizer&apos;s account, and refer unpaid amounts to collections.</p>
+          <p>Concerns about a hire or the work performed must be raised with FxD Events support before contacting a bank or card issuer, so we can try to resolve them.</p>
+          <p>A Contractor&apos;s pay that has already been released is not reversed because of an Organizer&apos;s dispute, unless the work was not performed or the Contractor was involved in fraud.</p>
+
+          <h3 className="font-bold text-slate-900">7. Bank (ACH) Payments</h3>
+          <p>Paying by bank is available only to Organizers approved by FxD Events, only from a business bank account in the Organizer&apos;s company name, and only up to the per-hire limit shown in the app. By linking a bank account, the Organizer confirms they are authorized to use it for the business and authorizes FxD Events, through Stripe, to debit it for each hire the Organizer approves.</p>
+          <p>Bank payments take several business days to clear. The Contractor is hired only once the payment clears; if it fails, the hire is not confirmed. FxD Events may limit, suspend, or end access to bank payments at any time.</p>
+
           <div className="h-10"></div> {/* Spacer */}
         </div>
 

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/src/utils/supabase/admin'
 import { createClient as createServerClient } from '@/src/utils/supabase/server';
+import { isAdminEmail } from '@/src/config/admins'
 
 export async function POST(request: Request) {
   try {
@@ -12,10 +13,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const adminEmails = ['brian@fxdevents.com', 'brian@l27consulting.com'];
-    if (!user.email || !adminEmails.includes(user.email)) {
+    if (!isAdminEmail(user.email)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    } // <--- THIS WAS MISSING!
+    }
 
     const body = await request.json();
     const { targetUserId } = body;

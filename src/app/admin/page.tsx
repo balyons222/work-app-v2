@@ -2,15 +2,15 @@ import { createClient as createServerClient } from '@/src/utils/supabase/server'
 import { createAdminClient } from '@/src/utils/supabase/admin'
 import { redirect } from 'next/navigation'
 import DeleteUserButton from '@/src/components/DeleteUserButton'
+import AchAdminControls from '@/src/components/AchAdminControls'
+import { isAdminEmail } from '@/src/config/admins'
 
 export default async function AdminDashboard() {
   const supabase = await createServerClient()
   
   // 1. Security Check: Ensure only YOU can view this page
   const { data: { user } } = await supabase.auth.getUser()
-  const adminEmails = ['brian@fxdevents.com'] // Replace with your actual admin email
-  
-  if (!user || !adminEmails.includes(user.email || '')) {
+  if (!user || !isAdminEmail(user.email)) {
     redirect('/dashboard') // Kick unauthorized users back to the main dashboard
   }
 
@@ -39,6 +39,18 @@ export default async function AdminDashboard() {
                     {targetUser.role || 'No Role'}
                   </span>
                 </div>
+                {targetUser.role === 'organizer' && (
+                  <AchAdminControls
+                    userId={targetUser.id}
+                    companyName={targetUser.company_name}
+                    achEnabled={!!targetUser.ach_enabled}
+                    bankStatus={targetUser.ach_bank_status}
+                    bankName={targetUser.ach_bank_name}
+                    bankLast4={targetUser.ach_bank_last4}
+                    holderType={targetUser.ach_bank_holder_type}
+                    ownerNames={targetUser.ach_bank_owner_names}
+                  />
+                )}
               </div>
               
               {/* Your button component securely passed the user ID */}
