@@ -1,218 +1,233 @@
 'use client'
 export const dynamic = 'force-dynamic'
-import { useEffect, useState, useRef, Suspense } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react'
 import { createClient } from '@/src/utils/supabase/client'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import ChatWindow from '@/src/components/ChatWindow'
 
-// 1. We create the main logic component (NOT exported as default yet)
-function ChatContent() {
-  const [conversations, setConversations] = useState<any[]>([])
-  const [activeChat, setActiveChat] = useState<string | null>(null)
-  const [messages, setMessages] = useState<any[]>([])
-  const [newMessage, setNewMessage] = useState('')
-  const [currentUser, setCurrentUser] = useState<any>(null)
-  
-  const supabase = createClient()
+type Person = { full_name: string | null; company_name?: string | null; avatar_url: string | null } | null
+
+type Conversation = {
+  id: string
+  organizer_id: string | null
+  worker_id: string | null
+  created_at: string
+  job: { title: string | null } | null
+  organizer: Person
+  worker: Person
+}
+
+type Summary = { lastText: string; lastAt: string; lastFromMe: boolean; unread: number }
+
+const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? v[0] ?? null : v ?? null)
+
+function timeLabel(iso: string) {
+  const d = new Date(iso)
+  const now = new Date()
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const days = (now.getTime() - d.getTime()) / 86_400_000
+  if (days < 7) return d.toLocaleDateString([], { weekday: 'short' })
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
+function Inbox() {
+  const supabase = useMemo(() => createClient(), [])
+  const router = useRouter()
   const searchParams = useSearchParams()
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const wantedId = searchParams.get('id')
+  const wantedWorker = searchParams.get('workerId')
 
-  // Auto-select chat from URL if present
-  const startJobId = searchParams.get('jobId')
-  const startWorkerId = searchParams.get('workerId')
+  const [me, setMe] = useState<string | null>(null)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [summaries, setSummaries] = useState<Record<string, Summary>>({})
+  const [activeId, setActiveId] = useState<string | null>(wantedId)
+  const [loading, setLoading] = useState(true)
+  const activeRef = useRef(activeId)
+  activeRef.current = activeId
 
-  useEffect(() => {
-    setupUser()
-  }, [])
-
-  useEffect(() => {
-    if (currentUser) {
-      fetchConversations()
-      subscribeToMessages()
-    }
-  }, [currentUser, activeChat])
-
-  // Scroll to bottom of chat
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  async function setupUser() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) setCurrentUser(user)
-  }
-
-  async function fetchConversations() {
-    // 1. Get all conversations where I am either user_a or user_b
-    const { data, error } = await supabase
+  const load = useCallback(async (userId: string) => {
+    const { data: convs, error } = await supabase
       .from('conversations')
       .select(`
-        *,
+        id, organizer_id, worker_id, created_at,
         job:jobs(title),
-        profile_a:profiles!conversations_user_a_fkey(full_name),
-        profile_b:profiles!conversations_user_b_fkey(full_name)
+        organizer:profiles!conversations_organizer_id_fkey(full_name, company_name, avatar_url),
+        worker:profiles!conversations_worker_id_fkey(full_name, avatar_url)
       `)
-      .or(`user_a.eq.${currentUser.id},user_b.eq.${currentUser.id}`)
-      .order('updated_at', { ascending: false })
-
+      .or(`organizer_id.eq.${userId},worker_id.eq.${userId}`)
     if (error) {
-      console.error('Error fetching chats:', error)
-    } else {
-      setConversations(data || [])
+      console.error('Error loading conversations:', error.message)
+      setLoading(false)
+      return
+    }
+    const list: Conversation[] = (convs || []).map((c: any) => ({
+      ...c, job: one(c.job), organizer: one(c.organizer), worker: one(c.worker),
+    }))
 
-      // If URL has params, find or create that chat
-      if (startJobId && startWorkerId && !activeChat) {
-        const existing = data?.find(c => c.job_id === startJobId)
-        if (existing) {
-          setActiveChat(existing.id)
+    // Last message + unread count per conversation (newest first, so the first one seen is the latest)
+    const next: Record<string, Summary> = {}
+    if (list.length) {
+      const { data: msgs } = await supabase
+        .from('messages')
+        .select('conversation_id, sender_id, content, created_at, is_read')
+        .in('conversation_id', list.map(c => c.id))
+        .order('created_at', { ascending: false })
+        .limit(2000)
+      for (const m of msgs || []) {
+        if (!m.conversation_id) continue
+        const s = next[m.conversation_id] ??= {
+          lastText: m.content, lastAt: m.created_at, lastFromMe: m.sender_id === userId, unread: 0,
         }
+        // The open chat marks incoming messages read itself; don't flash a badge for it meanwhile
+        if (!m.is_read && m.sender_id !== userId && m.conversation_id !== activeRef.current) s.unread++
       }
     }
-  }
 
-  async function subscribeToMessages() {
-    const channel = supabase
-      .channel('chat_room')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload) => {
-          if (payload.new.conversation_id === activeChat) {
-            setMessages((prev) => [...prev, payload.new])
-          }
-        }
-      )
-      .subscribe()
+    const at = (c: Conversation) => next[c.id]?.lastAt || c.created_at
+    list.sort((a, b) => at(b).localeCompare(at(a)))
+    setConversations(list)
+    setSummaries(next)
+    setLoading(false)
 
-    return () => {
-      supabase.removeChannel(channel)
+    // Older profile links pass ?workerId=: open the latest conversation with that person
+    if (!wantedId && wantedWorker) {
+      const match = list.find(c => c.worker_id === wantedWorker || c.organizer_id === wantedWorker)
+      if (match) setActiveId(prev => prev ?? match.id)
     }
-  }
+  }, [supabase, wantedId, wantedWorker])
 
-  // Load messages when clicking a chat
   useEffect(() => {
-    if (activeChat) {
-      fetchMessages(activeChat)
-    }
-  }, [activeChat])
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        router.push('/login')
+        return
+      }
+      setMe(user.id)
+      load(user.id)
+    })
+  }, [supabase, router, load])
 
-  async function fetchMessages(chatId: string) {
-    const { data } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', chatId)
-      .order('created_at', { ascending: true })
-    
-    if (data) setMessages(data)
+  // New messages in any of my conversations (RLS only delivers ones I can read) refresh the list
+  useEffect(() => {
+    if (!me) return
+    const channel = supabase
+      .channel(`inbox_${me}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => load(me))
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [supabase, me, load])
+
+  // Follow notification links that change ?id= while already on this page
+  useEffect(() => {
+    if (wantedId) setActiveId(wantedId)
+  }, [wantedId])
+
+  const openChat = (id: string) => {
+    setActiveId(id)
+    router.replace(`/messages?id=${id}`, { scroll: false })
   }
 
-  async function sendMessage(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newMessage.trim() || !activeChat || !currentUser) return
-
-    const { error } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: activeChat,
-        sender_id: currentUser.id,
-        content: newMessage
-      })
-
-    if (!error) {
-      setNewMessage('')
-    }
+  const closeChat = () => {
+    setActiveId(null)
+    router.replace('/messages', { scroll: false })
   }
 
-  // Helper to get the "Other Person's" name
-  function getChatName(chat: any) {
-    if (!currentUser) return 'Chat'
-    return chat.user_a === currentUser.id 
-      ? chat.profile_b?.full_name 
-      : chat.profile_a?.full_name
+  const markReadLocally = useCallback((id: string) => {
+    setSummaries(prev => (prev[id]?.unread ? { ...prev, [id]: { ...prev[id], unread: 0 } } : prev))
+  }, [])
+
+  const otherPerson = (c: Conversation) => {
+    const iAmOrganizer = c.organizer_id === me
+    const p = iAmOrganizer ? c.worker : c.organizer
+    const name = (iAmOrganizer ? p?.full_name : p?.company_name || p?.full_name) || 'FxD member'
+    return { name, avatar: p?.avatar_url || null }
   }
+
+  const active = conversations.find(c => c.id === activeId) || null
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar: List of Chats */}
-      <div className="w-1/3 bg-white border-r border-gray-200 flex flex-col">
-        <div className="p-4 border-b border-gray-100 font-bold text-lg">
-          Messages
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {conversations.map((chat) => (
-            <button
-              key={chat.id}
-              onClick={() => setActiveChat(chat.id)}
-              className={`w-full text-left p-4 hover:bg-gray-50 border-b border-gray-50 transition-colors ${
-                activeChat === chat.id ? 'bg-teal-50 border-slate-100' : ''
-              }`}
-            >
-              <p className="font-bold text-gray-900">{getChatName(chat)}</p>
-              <p className="text-xs text-gray-500 mt-1">{chat.job?.title}</p>
-            </button>
-          ))}
-          {conversations.length === 0 && (
-            <div className="p-8 text-center text-gray-400 text-sm">
-              No conversations yet.
-            </div>
-          )}
-        </div>
-      </div>
+    <div className="bg-slate-50 min-h-[calc(100vh-5rem)]">
+      <div className="max-w-6xl mx-auto md:px-6 md:py-8">
+        <div className="bg-white md:rounded-2xl md:border md:border-slate-200 md:shadow-sm overflow-hidden flex h-[calc(100vh-5rem)] md:h-[calc(100vh-9rem)]">
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col h-screen">
-        {activeChat ? (
-          <>
-            {/* Chat Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {messages.map((msg) => {
-                const isMe = msg.sender_id === currentUser?.id
-                return (
-                  <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[70%] px-4 py-2 rounded-xl text-sm ${
-                      isMe ? 'bg-secondary text-white' : 'bg-gray-200 text-gray-800'
-                    }`}>
-                      {msg.content}
-                    </div>
-                  </div>
-                )
-              })}
-              <div ref={bottomRef} />
+          {/* Conversation list (hidden on phones while a chat is open) */}
+          <aside className={`w-full md:w-80 md:border-r border-slate-200 flex-col ${active ? 'hidden md:flex' : 'flex'}`}>
+            <div className="px-5 py-4 border-b border-slate-100">
+              <h1 className="font-black text-lg text-slate-900">Messages</h1>
             </div>
+            <div className="flex-1 overflow-y-auto">
+              {loading ? (
+                <div className="p-8 text-center text-slate-400 text-sm">Loading…</div>
+              ) : conversations.length === 0 ? (
+                <div className="p-8 text-center text-slate-500 text-sm leading-relaxed">
+                  No conversations yet. Use <span className="font-bold">Message</span> on an application, job or profile to start one.
+                </div>
+              ) : (
+                conversations.map(c => {
+                  const s = summaries[c.id]
+                  const who = otherPerson(c)
+                  const unread = s?.unread || 0
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => openChat(c.id)}
+                      className={`w-full text-left px-5 py-4 border-b border-slate-50 flex gap-3 transition-colors hover:bg-slate-50 ${c.id === activeId ? 'bg-teal-50' : ''}`}
+                    >
+                      <div className="h-10 w-10 rounded-full bg-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center text-sm font-bold text-slate-500">
+                        {who.avatar ? <img src={who.avatar} alt="" className="h-full w-full object-cover" /> : who.name.charAt(0)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className={`truncate text-sm ${unread ? 'font-black text-slate-900' : 'font-bold text-slate-800'}`}>{who.name}</p>
+                          {s && <span className="text-[11px] text-slate-400 flex-shrink-0">{timeLabel(s.lastAt)}</span>}
+                        </div>
+                        {c.job?.title && <p className="text-[11px] font-bold text-secondary truncate">{c.job.title}</p>}
+                        <div className="flex items-center justify-between gap-2 mt-0.5">
+                          <p className={`text-xs truncate ${unread ? 'text-slate-900 font-semibold' : 'text-slate-500'}`}>
+                            {s ? `${s.lastFromMe ? 'You: ' : ''}${s.lastText}` : 'No messages yet'}
+                          </p>
+                          {unread > 0 && (
+                            <span className="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center flex-shrink-0">
+                              {unread > 9 ? '9+' : unread}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </aside>
 
-            {/* Message Input */}
-            <div className="p-4 bg-white border-t border-gray-200">
-              <form onSubmit={sendMessage} className="flex gap-2">
-                <input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
-                />
-                <button 
-                  type="submit"
-                  className="bg-secondary text-white font-bold px-6 py-2 rounded-lg hover:bg-teal-700 transition-colors"
-                >
-                  Send
-                </button>
-              </form>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-400">
-            Select a conversation to start chatting
-          </div>
-        )}
+          {/* Open conversation */}
+          <section className={`flex-1 min-w-0 ${active ? 'flex' : 'hidden md:flex'}`}>
+            {active && me ? (
+              <ChatWindow
+                key={active.id}
+                variant="inline"
+                conversationId={active.id}
+                currentUserId={me}
+                otherUserName={otherPerson(active).name}
+                onClose={closeChat}
+                onRead={() => markReadLocally(active.id)}
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
+                {!loading && activeId && !active ? 'That conversation could not be found.' : 'Select a conversation'}
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   )
 }
 
-// 2. We export a "Wrapper" that handles the Suspense (Waiting state)
 export default function MessagesPage() {
   return (
-    <Suspense fallback={<div className="p-12 text-center text-gray-500">Loading messages...</div>}>
-      <ChatContent />
+    <Suspense fallback={<div className="p-12 text-center text-slate-500">Loading messages…</div>}>
+      <Inbox />
     </Suspense>
   )
 }

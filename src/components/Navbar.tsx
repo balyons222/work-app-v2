@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/src/utils/supabase/client'
 // ✅ IMPORT THE BELL
 import NotificationBell from './NotificationBell'
+import MessagesLink from './MessagesLink'
 
 export default function Navbar() {
   const [user, setUser] = useState<any>(null)
@@ -97,6 +98,7 @@ export default function Navbar() {
             {user ? (
               <>
                 <Link href="/dashboard" className={`${textColor} font-bold hover:text-secondary transition-colors`}>Dashboard</Link>
+                <MessagesLink userId={user.id} className={`${textColor} font-bold hover:text-secondary transition-colors`} />
                 <Link href="/search" className={`${textColor} font-bold hover:text-secondary transition-colors`}>Find Talent</Link>
                 <Link href="/events" className={`${textColor} font-bold hover:text-secondary transition-colors`}>Events</Link>
                 <Link href="/jobs" className={`${textColor} font-bold hover:text-secondary transition-colors`}>Find Work</Link>
@@ -179,6 +181,7 @@ export default function Navbar() {
                 </div>
 
                 <Link href="/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-4 rounded-md text-base font-bold text-slate-700 hover:text-primary hover:bg-slate-50">Dashboard</Link>
+                <MessagesLink userId={user.id} onClick={() => setIsMobileMenuOpen(false)} className="w-full px-3 py-4 rounded-md text-base font-bold text-slate-700 hover:text-primary hover:bg-slate-50" />
                 <Link href="/search" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-4 rounded-md text-base font-bold text-slate-700 hover:text-primary hover:bg-slate-50">Find Talent</Link>
                 <Link href="/events" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-4 rounded-md text-base font-bold text-slate-700 hover:text-primary hover:bg-slate-50">Events</Link>
                 <Link href="/jobs" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-4 rounded-md text-base font-bold text-slate-700 hover:text-primary hover:bg-slate-50">Find Work</Link>

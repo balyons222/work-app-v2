@@ -3,14 +3,15 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { PUBLIC_PROFILE_COLUMNS } from '@/src/utils/profileColumns'
 
-export default async function PublicProfilePage({ params }: { params: { id: string } }) {
+export default async function PublicProfilePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = await createClient()
   
   // 1. Fetch the specific profile
   const { data: profile } = await supabase
     .from('profiles')
     .select(PUBLIC_PROFILE_COLUMNS)
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   // 2. If no user found, show a 404

@@ -4,15 +4,20 @@ import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/src/utils/supabase/client'
 import toast from 'react-hot-toast'
 import { RealtimeChannel } from '@supabase/supabase-js' // Import type if using TypeScript
+import { notifyNewMessage } from '@/src/utils/notifyMessage'
 
 interface ChatWindowProps {
   conversationId: string
   currentUserId: string
   otherUserName: string
   onClose: () => void
+  /** 'popup' floats bottom-right (default); 'inline' fills its parent, for the /messages inbox */
+  variant?: 'popup' | 'inline'
+  /** Called after this user's unread messages in the conversation are marked read */
+  onRead?: () => void
 }
 
-export default function ChatWindow({ conversationId, currentUserId, otherUserName, onClose }: ChatWindowProps) {
+export default function ChatWindow({ conversationId, currentUserId, otherUserName, onClose, variant = 'popup', onRead }: ChatWindowProps) {
   const [messages, setMessages] = useState<any[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [loading, setLoading] = useState(true)
@@ -108,7 +113,19 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
       .eq('is_read', false)
       .neq('sender_id', currentUserId); 
 
-    if (error) console.error('Error marking as read:', error);
+    if (error) {
+      console.error('Error marking as read:', error);
+      return
+    }
+    // Clear bell entries that point at this conversation, and tell the navbar badge to recount
+    await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('user_id', currentUserId)
+      .eq('link', `/messages?id=${conversationId}`)
+      .eq('is_read', false)
+    window.dispatchEvent(new Event('fxd:messages-read'))
+    onRead?.()
   };
 
   // ✅ NEW: Broadcast "I am typing" event
@@ -139,37 +156,40 @@ export default function ChatWindow({ conversationId, currentUserId, otherUserNam
        created_at: new Date().toISOString() 
     }]) */
 
-    const { error } = await supabase.from('messages').insert({
+    const { data: sent, error } = await supabase.from('messages').insert({
       conversation_id: conversationId,
       sender_id: currentUserId,
       content: msgContent,
       is_read: false
-    })
+    }).select('id').single()
 
     if (error) {
       toast.error('Failed to send')
       setNewMessage(msgContent)
+      return
     }
+    // Bell + email for the recipient (the server decides whether to send; never blocks the chat)
+    if (sent?.id) notifyNewMessage(sent.id)
   }
 
   return (
-    <div className="fixed bottom-0 right-4 w-80 md:w-96 h-[500px] bg-white rounded-t-2xl shadow-2xl border border-slate-200 flex flex-col z-[100] animate-in slide-in-from-bottom-10">
+    <div className={variant === 'inline'
+      ? 'h-full w-full bg-white flex flex-col'
+      : 'fixed bottom-0 right-4 w-80 md:w-96 h-[500px] bg-white rounded-t-2xl shadow-2xl border border-slate-200 flex flex-col z-[100] animate-in slide-in-from-bottom-10'}>
       
       {/* HEADER */}
-      <div className="p-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl flex justify-between items-center">
+      <div className={`p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center ${variant === 'inline' ? '' : 'rounded-t-2xl'}`}>
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="h-8 w-8 bg-slate-200 rounded-full flex items-center justify-center text-xs font-bold text-slate-500">
               {otherUserName.charAt(0)}
             </div>
-            <div className="absolute bottom-0 right-0 h-2.5 w-2.5 bg-green-500 border-2 border-white rounded-full"></div>
           </div>
-          <div>
-            <span className="font-bold text-slate-900 block text-sm">{otherUserName}</span>
-            <span className="text-[10px] text-slate-400 font-medium">Active Now</span>
-          </div>
+          <span className="font-bold text-slate-900 block text-sm">{otherUserName}</span>
         </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold text-xl px-2">&times;</button>
+        <button onClick={onClose} aria-label={variant === 'inline' ? 'Back to conversations' : 'Close chat'} className={`text-slate-400 hover:text-slate-600 font-bold text-xl px-2 ${variant === 'inline' ? 'md:hidden' : ''}`}>
+          {variant === 'inline' ? '←' : <>&times;</>}
+        </button>
       </div>
 
       {/* MESSAGES AREA */}
