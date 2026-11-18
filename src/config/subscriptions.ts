@@ -58,3 +58,13 @@ export function getPlanLimits(userPlanTier: string | null | undefined) {
     
   return PLAN_LIMITS[tier];
 }
+
+// Basic (free) contractors can send this many applications per calendar month.
+// Applications to jobs they were invited to don't count. Contractor Pro is unlimited.
+// Used by the apply flow, the Pricing page and the help guide.
+export const BASIC_MONTHLY_APPLICATIONS = 3
+
+// Monthly plan prices in USD, as shown to users. The amount actually charged comes from
+// the Stripe price (see stripePrices.ts); keep these in sync when prices change.
+export const CONTRACTOR_PRO_MONTHLY_USD = 19
+export const ORGANIZER_HUB_MONTHLY_USD = 49

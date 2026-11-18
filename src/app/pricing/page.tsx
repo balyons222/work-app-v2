@@ -5,6 +5,7 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+import { BASIC_MONTHLY_APPLICATIONS, CONTRACTOR_PRO_MONTHLY_USD, ORGANIZER_HUB_MONTHLY_USD } from '@/src/config/subscriptions'
 
 export default function PricingPage() {
   const [loading, setLoading] = useState(false)
@@ -95,7 +96,7 @@ export default function PricingPage() {
             </div>
 
             <div className="flex-1 space-y-4 mb-8">
-              <FeatureItem text="Apply to unlimited open jobs" />
+              <FeatureItem text={`Apply to ${BASIC_MONTHLY_APPLICATIONS} jobs a month (invites don’t count)`} />
               <FeatureItem text="Standard search visibility" />
               <FeatureItem text="Up to 3 portfolio images" />
             </div>
@@ -120,12 +121,13 @@ export default function PricingPage() {
               <h3 className="text-2xl font-bold text-white mb-2">Contractor Pro</h3>
               <p className="text-indigo-200 text-sm h-10">Stand out to top-tier clients and showcase your full expertise.</p>
               <div className="mt-6 flex items-baseline gap-1">
-                <span className="text-5xl font-black text-white">$19</span>
+                <span className="text-5xl font-black text-white">${CONTRACTOR_PRO_MONTHLY_USD}</span>
                 <span className="text-indigo-200 font-medium">/month</span>
               </div>
             </div>
 
             <div className="flex-1 space-y-4 mb-8">
+              <FeatureItem text="Unlimited job applications" dark />
               <FeatureItem text="Featured badge on your profile" dark />
               <FeatureItem text="Priority placement in Organizer searches" dark />
               <FeatureItem text="Up to 10 high-res portfolio images" dark />
@@ -153,7 +155,7 @@ export default function PricingPage() {
               <h3 className="text-2xl font-bold text-white mb-2">Organizer Hub</h3>
               <p className="text-slate-400 text-sm h-10">Post jobs, manage shifts, and recruit top local talent seamlessly.</p>
               <div className="mt-6 flex items-baseline gap-1">
-                <span className="text-5xl font-black text-white">$49</span>
+                <span className="text-5xl font-black text-white">${ORGANIZER_HUB_MONTHLY_USD}</span>
                 <span className="text-slate-400 font-medium">/month</span>
               </div>
             </div>
