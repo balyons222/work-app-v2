@@ -15,10 +15,17 @@ type NotifyEvent =
   | { kind: 'review'; jobId: string; revieweeId: string }
   | { kind: 'invite'; eventId: string; inviteeId: string; jobId?: string | null }
   | { kind: 'invite_declined'; inviteId: string }
+  | { kind: 'message'; messageId: string }
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://fxdevents.com').replace(/\/$/, '')
 const DEDUPE_WINDOW_MS = 10 * 60 * 1000
+// Chat: one notice per burst. A follow-up message only notifies again once the recipient has read the
+// earlier ones, or after this long.
+const MESSAGE_RENOTIFY_MS = 60 * 60 * 1000
+// Only messages sent just now can trigger a notice (stops replaying old message IDs)
+const MESSAGE_MAX_AGE_MS = 5 * 60 * 1000
+const PREVIEW_CHARS = 140
 
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
@@ -109,6 +116,7 @@ export async function POST(req: Request) {
     const event = (await req.json()) as NotifyEvent
     const admin = createAdminClient()
     const notice = await buildNotice(admin, user.id, event)
+    if (!notice) return NextResponse.json({ success: true, skipped: true })
 
     // Replay guard: the same notice to the same person within the window is sent once
     const since = new Date(Date.now() - DEDUPE_WINDOW_MS).toISOString()
@@ -156,7 +164,7 @@ export async function POST(req: Request) {
   }
 }
 
-async function buildNotice(admin: ReturnType<typeof createAdminClient>, actorId: string, event: NotifyEvent): Promise<Notice> {
+async function buildNotice(admin: ReturnType<typeof createAdminClient>, actorId: string, event: NotifyEvent): Promise<Notice | null> {
   switch (event?.kind) {
     case 'new_applicant': {
       // Actor must actually have applied to this job
@@ -319,6 +327,73 @@ async function buildNotice(admin: ReturnType<typeof createAdminClient>, actorId:
         subject: `${name} declined your invitation to ${what}`,
         link: `/dashboard/event/${inv.event_id}`,
         cta: 'Find other talent',
+        type: 'info',
+      }
+    }
+
+    case 'message': {
+      // Actor must have sent this message, just now, in a conversation they belong to
+      const { data: msg } = await admin
+        .from('messages')
+        .select('id, conversation_id, sender_id, content, created_at, is_read')
+        .eq('id', event.messageId)
+        .maybeSingle()
+      if (!msg || msg.sender_id !== actorId || !msg.conversation_id) throw new NotifyError('Message not found', 404)
+      if (Date.now() - new Date(msg.created_at).getTime() > MESSAGE_MAX_AGE_MS) return null
+      if (msg.is_read) return null   // already seen in an open chat window
+
+      const { data: conv } = await admin
+        .from('conversations')
+        .select('id, organizer_id, worker_id, job_id')
+        .eq('id', msg.conversation_id)
+        .maybeSingle()
+      if (!conv || (conv.organizer_id !== actorId && conv.worker_id !== actorId)) throw new NotifyError('Message not found', 404)
+      const recipientId = conv.organizer_id === actorId ? conv.worker_id : conv.organizer_id
+      if (!recipientId) return null
+      const link = `/messages?id=${conv.id}`
+
+      // Burst control: if earlier messages from this sender are still unread and we notified recently, stay quiet
+      const { count: earlierUnread } = await admin
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('conversation_id', conv.id)
+        .eq('sender_id', actorId)
+        .eq('is_read', false)
+        .neq('id', msg.id)
+        .lte('created_at', msg.created_at)
+      if (earlierUnread) {
+        const { data: recent } = await admin
+          .from('notifications')
+          .select('id')
+          .eq('user_id', recipientId)
+          .eq('link', link)
+          .gte('created_at', new Date(Date.now() - MESSAGE_RENOTIFY_MS).toISOString())
+          .limit(1)
+        if (recent && recent.length > 0) return null
+      }
+
+      const { data: who } = await admin.from('profiles').select('full_name, company_name').eq('id', actorId).maybeSingle()
+      const name = (conv.organizer_id === actorId ? who?.company_name || who?.full_name : who?.full_name) || 'Someone'
+
+      let jobTitle: string | null = null
+      if (conv.job_id) {
+        const { data: job } = await admin.from('jobs').select('title').eq('id', conv.job_id).maybeSingle()
+        jobTitle = job?.title ?? null
+      }
+
+      const text = (msg.content || '').replace(/\s+/g, ' ').trim()
+      const preview = text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS - 1).trimEnd()}…` : text
+      const details: [string, string][] = []
+      if (jobTitle) details.push(['About', jobTitle])
+
+      return {
+        userId: recipientId,
+        title: `New message from ${name} 💬`,
+        message: preview ? `"${preview}"` : `${name} sent you a message.`,
+        subject: `${name} sent you a message${jobTitle ? ` about ${jobTitle}` : ''}`,
+        details,
+        link,
+        cta: 'Read & reply',
         type: 'info',
       }
     }
