@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { notify } from '@/src/utils/notifications'
 import TermsModal from '@/src/components/TermsModal'
 import ChatWindow from '@/src/components/ChatWindow'
+import { BASIC_MONTHLY_APPLICATIONS } from '@/src/config/subscriptions'
 
 export default function JobDetailsPage() {
   const [job, setJob] = useState<any>(null)
@@ -162,9 +163,9 @@ export default function JobDetailsPage() {
           .eq('applicant_id', currentUser.id)
           .gte('created_at', startOfMonth)
 
-        if (count !== null && count >= 3) {
+        if (count !== null && count >= BASIC_MONTHLY_APPLICATIONS) {
           toast.dismiss(toastId)
-          toast.error('You hit your limit of 3 free applications this month! Upgrade to Pro for unlimited.')
+          toast.error(`You've used your ${BASIC_MONTHLY_APPLICATIONS} free applications this month. Upgrade to Contractor Pro for unlimited.`)
           router.push('/pricing')
           return
         }
