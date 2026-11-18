@@ -77,7 +77,7 @@ export async function POST(req: Request) {
 
     const laborCents = Math.round(laborCost * 100)
 
-    // Fee depends on the organizer's plan AT FUNDING TIME (Basic 15%, Pro Hub 10%).
+    // Fee depends on the organizer's plan AT FUNDING TIME (rates in src/config/platformFees.ts).
     // The charged amount is stored by the webhook, so payout uses the rate actually paid.
     const { data: organizer } = await supabaseAdmin
       .from('profiles')

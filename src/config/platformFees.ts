@@ -1,7 +1,8 @@
 // Platform fee charged to the ORGANIZER on top of labor when funding escrow.
 // The contractor always receives 100% of the labor amount.
-export const BASIC_FEE_RATE = 0.15   // Basic organizers
-export const PRO_HUB_FEE_RATE = 0.10 // Pro Hub organizers
+// Changing a rate affects only hires funded after the change; funded hires keep the fee they were charged.
+export const BASIC_FEE_RATE = 0.18   // Basic organizers
+export const PRO_HUB_FEE_RATE = 0.12 // Organizer Hub organizers
 
 const PRO_HUB_TIERS = ['organizer', 'organizer_pro']
 
