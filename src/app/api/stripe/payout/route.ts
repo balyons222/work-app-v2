@@ -144,7 +144,7 @@ export async function POST(req: Request) {
 
     // 9. Refund unused escrow to the organizer (hourly jobs that came in under estimate):
     //    the unused labor PLUS the platform fee charged on that unused labor.
-    //    Fee charged at funding = Basic 15% / Pro Hub 10%, fixed when funded.
+    //    Fee charged at funding (rate from platformFees.ts at that time), fixed when funded.
     const fundedFeeCents = app.funded_amount_cents && app.funded_labor_cents
       ? app.funded_amount_cents - app.funded_labor_cents
       : Math.round(fundedLaborCents * LEGACY_FEE_RATE)

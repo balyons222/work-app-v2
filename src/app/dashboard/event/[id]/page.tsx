@@ -509,7 +509,7 @@ export default function EventManagerPage() {
         <div className="space-y-6">
           {jobs.map(job => {
             const laborCost = job.rate_type === 'hourly' ? (job.rate * (job.estimated_hours || 0)) : job.rate
-            const platformFee = Math.round(laborCost * 100 * platformFeeRate(userTier)) / 100 // Matches fund-job (Basic 15%, Pro Hub 10%)
+            const platformFee = Math.round(laborCost * 100 * platformFeeRate(userTier)) / 100 // Matches fund-job (rates in src/config/platformFees.ts)
             const totalToFund = laborCost + platformFee
 
             return (

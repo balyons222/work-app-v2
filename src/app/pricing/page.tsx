@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { BASIC_MONTHLY_APPLICATIONS, CONTRACTOR_PRO_MONTHLY_USD, ORGANIZER_HUB_MONTHLY_USD } from '@/src/config/subscriptions'
+import { CONTRACTOR_PRO_PRICE_ID, ORGANIZER_HUB_PRICE_ID } from '@/src/config/stripePrices'
+import { BASIC_FEE_RATE, PRO_HUB_FEE_RATE } from '@/src/config/platformFees'
 
 export default function PricingPage() {
   const [loading, setLoading] = useState(false)
@@ -135,7 +137,7 @@ export default function PricingPage() {
             </div>
 
             <button 
-              onClick={() => handleCheckout('price_1UaJTTPzkSWzkzs9RpK2s3OB', 'contractor')}
+              onClick={() => handleCheckout(CONTRACTOR_PRO_PRICE_ID, 'contractor')}
               disabled={currentPlan === 'contractor' || loading}
               className="w-full py-4 rounded-xl font-black text-indigo-900 bg-white hover:bg-indigo-50 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -161,6 +163,7 @@ export default function PricingPage() {
             </div>
 
             <div className="flex-1 space-y-4 mb-8">
+              <FeatureItem text={`${Math.round(PRO_HUB_FEE_RATE * 100)}% platform fee on hires (Basic: ${Math.round(BASIC_FEE_RATE * 100)}%)`} dark />
               <FeatureItem text="Post unlimited event shifts" dark />
               <FeatureItem text="Advanced talent filtering & search" dark />
               <FeatureItem text="Bulk messaging to candidates" dark />
@@ -168,7 +171,7 @@ export default function PricingPage() {
             </div>
 
             <button 
-              onClick={() => handleCheckout('price_1UaJTbPzkSWzkzs9cSeQjR0R', 'organizer')}
+              onClick={() => handleCheckout(ORGANIZER_HUB_PRICE_ID, 'organizer')}
               disabled={currentPlan === 'organizer' || loading}
               className="w-full py-4 rounded-xl font-black text-slate-900 bg-emerald-400 hover:bg-emerald-300 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
