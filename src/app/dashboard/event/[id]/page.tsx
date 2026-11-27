@@ -10,6 +10,7 @@ import InviteTalentModal from '@/src/components/InviteTalentModal'
 import ChatWindow from '@/src/components/ChatWindow' 
 import ReleasePayoutButton from '@/src/components/ReleasePayoutButton'
 import LogHoursModal from '@/src/components/LogHoursModal'
+import CompletedJobsBadge from '@/src/components/CompletedJobsBadge'
 import { platformFeeRate, feePercentLabel } from '@/src/config/platformFees'
 
 const ROLE_CATEGORIES = {
@@ -153,7 +154,7 @@ export default function EventManagerPage() {
           *,
           applications (
             id, status, applicant_id, payment_status, payment_method, funding_status, actual_hours,
-            profiles ( full_name, avatar_url, role, payouts_enabled )
+            profiles ( full_name, avatar_url, role, payouts_enabled, completed_jobs )
           ),
           reviews (id, reviewee_id, rating) 
         `)
@@ -558,6 +559,7 @@ export default function EventManagerPage() {
                                     app.status === 'approved' ? 'text-green-600' : 
                                     app.status === 'rejected' ? 'text-red-400' : 'text-slate-400'
                                 }`}>{app.status}</p>
+                                <CompletedJobsBadge count={app.profiles?.completed_jobs} />
                               </div>
                             </div>
 

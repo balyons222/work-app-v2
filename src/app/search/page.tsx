@@ -5,6 +5,7 @@ import { createClient } from '../../utils/supabase/client'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PUBLIC_PROFILE_COLUMNS } from '@/src/utils/profileColumns'
+import CompletedJobsBadge from '@/src/components/CompletedJobsBadge'
 
 function SearchContent() {
   const [allProfiles, setAllProfiles] = useState<any[]>([]) 
@@ -167,6 +168,9 @@ function SearchContent() {
                              <span className="text-[10px] text-slate-400">({profile.reviewCount})</span>
                           </div>
                         )}
+                        <div className="mt-1">
+                          <CompletedJobsBadge count={profile.completed_jobs} />
+                        </div>
                       </div>
                     </div>
 

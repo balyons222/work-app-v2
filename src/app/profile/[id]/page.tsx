@@ -7,6 +7,7 @@ import Link from 'next/link'
 import toast from 'react-hot-toast'
 import ChatWindow from '@/src/components/ChatWindow'
 import { PUBLIC_PROFILE_COLUMNS } from '@/src/utils/profileColumns'
+import CompletedJobsBadge from '@/src/components/CompletedJobsBadge'
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<any>(null)
@@ -124,6 +125,8 @@ export default function ProfilePage() {
 
   const starCount = Math.round(Number(averageRating) || 0)
 
+  const isContractor = ['contractor', 'worker', 'event professional'].includes((profile?.role || '').toLowerCase())
+
   if (loading) return <div className="p-20 text-center text-slate-400">Loading Profile...</div>
 
   return (
@@ -232,6 +235,11 @@ export default function ProfilePage() {
               ))}
             </div>
             <p className="text-xs font-bold text-slate-400 uppercase">{reviews.length} Verified Reviews</p>
+            {isContractor && (
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <CompletedJobsBadge count={profile.completed_jobs} size="md" />
+              </div>
+            )}
           </div>
 
           <div className="md:col-span-2 space-y-6">
