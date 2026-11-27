@@ -5,15 +5,40 @@ import { createClient } from '@/src/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-import { BASIC_MONTHLY_APPLICATIONS, CONTRACTOR_PRO_MONTHLY_USD, ORGANIZER_HUB_MONTHLY_USD } from '@/src/config/subscriptions'
+import {
+  BASIC_MONTHLY_APPLICATIONS, CONTRACTOR_PRO_MONTHLY_USD, ORGANIZER_HUB_MONTHLY_USD, isContractorPro, isOrganizerHub,
+} from '@/src/config/subscriptions'
 import { CONTRACTOR_PRO_PRICE_ID, ORGANIZER_HUB_PRICE_ID } from '@/src/config/stripePrices'
 import { BASIC_FEE_RATE, PRO_HUB_FEE_RATE } from '@/src/config/platformFees'
 
+const pct = (rate: number) => `${Math.round(rate * 100)}%`
+const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
+const FEE_SAVINGS = BASIC_FEE_RATE - PRO_HUB_FEE_RATE
+// Example month for the Hub savings line, and the labor at which Hub pays for itself
+const EXAMPLE_MONTHLY_LABOR = 7500
+const BREAK_EVEN_LABOR = Math.ceil(ORGANIZER_HUB_MONTHLY_USD / FEE_SAVINGS / 100) * 100
+
 export default function PricingPage() {
   const [loading, setLoading] = useState(false)
-  const [currentPlan, setCurrentPlan] = useState<string | null>(null)
+  const [currentPlan, setCurrentPlan] = useState<string | null>(null) // null = signed out
   const supabase = createClient()
   const router = useRouter()
+
+  const onPro = isContractorPro(currentPlan)
+  const onHub = isOrganizerHub(currentPlan)
+  const onBasic = currentPlan !== null && !onPro && !onHub
+
+  const openBillingPortal = async () => {
+    const toastId = toast.loading('Opening billing portal...')
+    try {
+      const response = await fetch('/api/stripe/portal', { method: 'POST' })
+      const data = await response.json().catch(() => ({}))
+      if (data.url) window.location.href = data.url
+      else throw new Error(data.error || 'Billing portal is temporarily unavailable.')
+    } catch (error: any) {
+      toast.error(error?.message || 'Billing portal is temporarily unavailable.', { id: toastId })
+    }
+  }
 
   useEffect(() => {
     async function checkPlan() {
@@ -26,7 +51,7 @@ export default function PricingPage() {
           .single()
         
         if (profile) {
-          setCurrentPlan(profile.plan_tier || 'free')
+          setCurrentPlan(profile.plan_tier || 'basic')
         }
       }
     }
@@ -77,10 +102,10 @@ export default function PricingPage() {
             &larr; Back to Dashboard
           </Link>
           <h1 className="text-4xl md:text-5xl font-black text-slate-900 mb-4 tracking-tight">
-            Level up your <span className="text-indigo-600">EventStaff</span> career.
+            Plans for <span className="text-indigo-600">event staff</span> and the businesses that hire them.
           </h1>
           <p className="text-lg text-slate-500 max-w-2xl mx-auto">
-            Whether you are picking up occasional weekend shifts or running a full-time event business, we have a plan that fits your goals.
+            Start free. Upgrade when you want to be seen first, or when you’re hiring every month and want lower fees.
           </p>
         </div>
 
@@ -90,25 +115,46 @@ export default function PricingPage() {
           <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm flex flex-col">
             <div className="mb-8">
               <h3 className="text-2xl font-bold text-slate-900 mb-2">Basic</h3>
-              <p className="text-slate-500 text-sm h-10">Everything you need to get started and apply to local gigs.</p>
+              <p className="text-slate-500 text-sm h-10">Free to join, for staff and event businesses alike.</p>
               <div className="mt-6 flex items-baseline gap-1">
                 <span className="text-5xl font-black text-slate-900">$0</span>
                 <span className="text-slate-500 font-medium">/month</span>
               </div>
             </div>
 
-            <div className="flex-1 space-y-4 mb-8">
-              <FeatureItem text={`Apply to ${BASIC_MONTHLY_APPLICATIONS} jobs a month (invites don’t count)`} />
-              <FeatureItem text="Standard search visibility" />
-              <FeatureItem text="Up to 3 portfolio images" />
+            <div className="flex-1 mb-8">
+              <p className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-3">For staff</p>
+              <div className="space-y-3 mb-6">
+                <FeatureItem text={`Apply to ${BASIC_MONTHLY_APPLICATIONS} jobs a month (invites don’t count)`} />
+                <FeatureItem text="Listed in Find Talent" />
+                <FeatureItem text="Up to 3 portfolio images" />
+                <FeatureItem text="Secure payouts to your bank through Stripe" />
+              </div>
+              <p className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-3">For businesses</p>
+              <div className="space-y-3">
+                <FeatureItem text="Post unlimited events and roles" />
+                <FeatureItem text="Search talent by name, role, skill or location" />
+                <FeatureItem text="Message and hire applicants one by one" />
+                <FeatureItem text={`${pct(BASIC_FEE_RATE)} platform fee on hires`} />
+              </div>
             </div>
 
-            <button 
-              disabled={currentPlan === 'free'}
-              className="w-full py-4 rounded-xl font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {currentPlan === 'free' ? 'Current Plan' : 'Downgrade to Basic'}
-            </button>
+            {onBasic || currentPlan === null ? (
+              <button
+                onClick={() => { if (currentPlan === null) router.push('/login') }}
+                disabled={onBasic}
+                className="w-full py-4 rounded-xl font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {onBasic ? 'Current Plan' : 'Get started free'}
+              </button>
+            ) : (
+              <button
+                onClick={openBillingPortal}
+                className="w-full py-4 rounded-xl font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition"
+              >
+                Manage or cancel plan
+              </button>
+            )}
           </div>
 
           {/* CONTRACTOR TIER CARD */}
@@ -121,7 +167,7 @@ export default function PricingPage() {
 
             <div className="mb-8">
               <h3 className="text-2xl font-bold text-white mb-2">Contractor Pro</h3>
-              <p className="text-indigo-200 text-sm h-10">Stand out to top-tier clients and showcase your full expertise.</p>
+              <p className="text-indigo-200 text-sm h-10">Get seen first and apply to as many jobs as you want.</p>
               <div className="mt-6 flex items-baseline gap-1">
                 <span className="text-5xl font-black text-white">${CONTRACTOR_PRO_MONTHLY_USD}</span>
                 <span className="text-indigo-200 font-medium">/month</span>
@@ -130,18 +176,18 @@ export default function PricingPage() {
 
             <div className="flex-1 space-y-4 mb-8">
               <FeatureItem text="Unlimited job applications" dark />
-              <FeatureItem text="Featured badge on your profile" dark />
-              <FeatureItem text="Priority placement in Organizer searches" dark />
-              <FeatureItem text="Up to 10 high-res portfolio images" dark />
-              <FeatureItem text="Directly pitch organizers (Skip the line)" dark />
+              <FeatureItem text="Listed first in organizers’ Find Talent searches" dark />
+              <FeatureItem text="Your applications appear at the top of the organizer’s list" dark />
+              <FeatureItem text="Pro badge on your profile, search card and applications" dark />
+              <FeatureItem text="Up to 10 portfolio images" dark />
             </div>
 
-            <button 
+            <button
               onClick={() => handleCheckout(CONTRACTOR_PRO_PRICE_ID, 'contractor')}
-              disabled={currentPlan === 'contractor' || loading}
+              disabled={onPro || loading}
               className="w-full py-4 rounded-xl font-black text-indigo-900 bg-white hover:bg-indigo-50 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Processing...' : currentPlan === 'contractor' ? 'Active Subscription' : 'Upgrade to Contractor'}
+              {loading ? 'Processing...' : onPro ? 'Active Subscription' : 'Upgrade to Contractor Pro'}
             </button>
           </div>
 
@@ -155,7 +201,7 @@ export default function PricingPage() {
 
             <div className="mb-8">
               <h3 className="text-2xl font-bold text-white mb-2">Organizer Hub</h3>
-              <p className="text-slate-400 text-sm h-10">Post jobs, manage shifts, and recruit top local talent seamlessly.</p>
+              <p className="text-slate-400 text-sm h-10">Lower fees and faster staffing for businesses that hire every month.</p>
               <div className="mt-6 flex items-baseline gap-1">
                 <span className="text-5xl font-black text-white">${ORGANIZER_HUB_MONTHLY_USD}</span>
                 <span className="text-slate-400 font-medium">/month</span>
@@ -163,19 +209,18 @@ export default function PricingPage() {
             </div>
 
             <div className="flex-1 space-y-4 mb-8">
-              <FeatureItem text={`${Math.round(PRO_HUB_FEE_RATE * 100)}% platform fee on hires (Basic: ${Math.round(BASIC_FEE_RATE * 100)}%)`} dark />
-              <FeatureItem text="Post unlimited event shifts" dark />
-              <FeatureItem text="Advanced talent filtering & search" dark />
-              <FeatureItem text="Bulk messaging to candidates" dark />
-              <FeatureItem text="Applicant tracking dashboard" dark />
+              <FeatureItem text={`${pct(PRO_HUB_FEE_RATE)} platform fee on hires instead of ${pct(BASIC_FEE_RATE)}`} dark />
+              <FeatureItem text={`Save ${usd(EXAMPLE_MONTHLY_LABOR * FEE_SAVINGS)} a month on ${usd(EXAMPLE_MONTHLY_LABOR)} of labor. Pays for itself above about ${usd(BREAK_EVEN_LABOR)}`} dark />
+              <FeatureItem text="Advanced talent filters: location, rating, jobs completed, rate, experience and travel" dark />
+              <FeatureItem text="Bulk messaging: send call times and updates to everyone hired or applied in one step" dark />
             </div>
 
-            <button 
+            <button
               onClick={() => handleCheckout(ORGANIZER_HUB_PRICE_ID, 'organizer')}
-              disabled={currentPlan === 'organizer' || loading}
+              disabled={onHub || loading}
               className="w-full py-4 rounded-xl font-black text-slate-900 bg-emerald-400 hover:bg-emerald-300 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Processing...' : currentPlan === 'organizer' ? 'Active Subscription' : 'Upgrade to Organizer'}
+              {loading ? 'Processing...' : onHub ? 'Active Subscription' : 'Upgrade to Organizer Hub'}
             </button>
           </div>
 

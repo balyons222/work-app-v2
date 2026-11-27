@@ -11,7 +11,10 @@ import ChatWindow from '@/src/components/ChatWindow'
 import ReleasePayoutButton from '@/src/components/ReleasePayoutButton'
 import LogHoursModal from '@/src/components/LogHoursModal'
 import CompletedJobsBadge from '@/src/components/CompletedJobsBadge'
+import ProBadge from '@/src/components/ProBadge'
+import BulkMessageModal from '@/src/components/BulkMessageModal'
 import { platformFeeRate, feePercentLabel } from '@/src/config/platformFees'
+import { isContractorPro, isOrganizerHub } from '@/src/config/subscriptions'
 
 const ROLE_CATEGORIES = {
   "Operations": ["General Event Support", "Site Lead", "Site Manager", "Finish Line Lead", "Start Line Lead", "Course Lead", "Vendor Manager", "Project Manager", "Equipment Operator", "Forklift Operator", "Truck Driver (nonCDL)", "Truck Driver (CDL)", "Electrician/Power", "Volunteer Coordinator", "Expo Lead", "Expo Support", "Warehouse Coordinator"],
@@ -58,6 +61,7 @@ export default function EventManagerPage() {
   const [activeChat, setActiveChat] = useState<{ id: string, name: string } | null>(null)
   const [loggingHoursApp, setLoggingHoursApp] = useState<any>(null)
   const [isFunding, setIsFunding] = useState<string | null>(null) // Tracks which app is currently funding to disable double-clicks
+  const [showBulkMessage, setShowBulkMessage] = useState(false)
   
   const supabase = createClient()
   const params = useParams()
@@ -154,16 +158,22 @@ export default function EventManagerPage() {
           *,
           applications (
             id, status, applicant_id, payment_status, payment_method, funding_status, actual_hours,
-            profiles ( full_name, avatar_url, role, payouts_enabled, completed_jobs )
+            profiles ( full_name, avatar_url, role, payouts_enabled, completed_jobs, plan_tier )
           ),
-          reviews (id, reviewee_id, rating) 
+          reviews (id, reviewee_id, rating)
         `)
         .eq('event_id', eventId)
         .order('created_at', { ascending: false })
 
       if (jobsError) throw new Error(jobsError.message)
 
-      setJobs(jobsData || [])
+      // Contractor Pro benefit: their applications are listed first (stable sort keeps the rest in order)
+      const sortedJobs = (jobsData || []).map((job: any) => ({
+        ...job,
+        applications: [...(job.applications || [])].sort((a: any, b: any) =>
+          Number(isContractorPro(b.profiles?.plan_tier)) - Number(isContractorPro(a.profiles?.plan_tier))),
+      }))
+      setJobs(sortedJobs)
     } catch (err: any) {
       toast.error(err.message || 'Failed to load event data')
     } finally {
@@ -447,9 +457,16 @@ export default function EventManagerPage() {
         {/* STAFFING SECTION */}
         <div className="flex justify-between items-end mb-6">
           <h2 className="text-2xl font-black text-primary">Staffing & Applicants</h2>
-          <button onClick={() => showJobForm ? resetForm() : setShowJobForm(true)} className="bg-black text-white px-6 py-3 rounded-xl font-bold shadow-lg">
-            {showJobForm ? 'Cancel' : '+ Add Role'}
-          </button>
+          <div className="flex flex-wrap justify-end gap-3">
+            {jobs.some(j => (j.applications?.length ?? 0) > 0) && (
+              <button onClick={() => setShowBulkMessage(true)} className="bg-white border border-slate-200 text-primary px-5 py-3 rounded-xl font-bold shadow-sm hover:bg-slate-50">
+                📣 Message team{!isOrganizerHub(userTier) && ' 🔒'}
+              </button>
+            )}
+            <button onClick={() => showJobForm ? resetForm() : setShowJobForm(true)} className="bg-black text-white px-6 py-3 rounded-xl font-bold shadow-lg">
+              {showJobForm ? 'Cancel' : '+ Add Role'}
+            </button>
+          </div>
         </div>
 
         {showJobForm && (
@@ -554,7 +571,10 @@ export default function EventManagerPage() {
                                 {app.profiles?.avatar_url && <img src={app.profiles.avatar_url} alt={`${app.profiles.full_name}'s avatar`} className="object-cover h-full w-full" />}
                               </div>
                               <div>
-                                <Link href={`/profile/${app.applicant_id}`} className="font-bold hover:underline text-primary">{app.profiles?.full_name}</Link>
+                                <div className="flex items-center gap-2">
+                                  <Link href={`/profile/${app.applicant_id}`} className="font-bold hover:underline text-primary">{app.profiles?.full_name}</Link>
+                                  {isContractorPro(app.profiles?.plan_tier) && <ProBadge />}
+                                </div>
                                 <p className={`text-xs uppercase font-bold ${
                                     app.status === 'approved' ? 'text-green-600' : 
                                     app.status === 'rejected' ? 'text-red-400' : 'text-slate-400'
@@ -654,6 +674,16 @@ export default function EventManagerPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showBulkMessage && (
+        <BulkMessageModal
+          eventId={eventId}
+          eventTitle={event?.title}
+          jobs={jobs}
+          hasHub={isOrganizerHub(userTier)}
+          onClose={() => setShowBulkMessage(false)}
+        />
       )}
 
       {inviteModalData.open && (
