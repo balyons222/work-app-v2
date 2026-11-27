@@ -61,7 +61,7 @@ export default function HelpPage() {
             ['What you do', 'Build a profile, apply for roles, accept invites, get paid', 'Create events, post roles, invite and hire talent, pay through Stripe'],
             ['Stripe setup', 'A Stripe payout account to receive pay', 'None. You pay at checkout when you hire'],
             ['Free plan', `Basic: $0, ${BASIC_MONTHLY_APPLICATIONS} applications a month (invites don’t count)`, `Basic: $0, ${pct(BASIC_FEE_RATE)} platform fee on labor`],
-            ['Paid plan', `Contractor Pro: $${CONTRACTOR_PRO_MONTHLY_USD}/month. Unlimited applications, featured badge, priority in searches`, `Organizer Hub: $${ORGANIZER_HUB_MONTHLY_USD}/month. ${pct(PRO_HUB_FEE_RATE)} platform fee, advanced talent search`],
+            ['Paid plan', `Contractor Pro: $${CONTRACTOR_PRO_MONTHLY_USD}/month. Unlimited applications, listed first in searches and applicant lists, Pro badge`, `Organizer Hub: $${ORGANIZER_HUB_MONTHLY_USD}/month. ${pct(PRO_HUB_FEE_RATE)} platform fee, advanced talent filters, bulk messaging`],
           ]}
         />
         <p className="text-sm">

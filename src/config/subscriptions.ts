@@ -61,10 +61,25 @@ export function getPlanLimits(userPlanTier: string | null | undefined) {
 
 // Basic (free) contractors can send this many applications per calendar month.
 // Applications to jobs they were invited to don't count. Contractor Pro is unlimited.
-// Used by the apply flow, the Pricing page and the help guide.
+// Shown on the Pricing page, the help guide and the apply flow. Enforced by the database trigger in
+// supabase/sql/2026-11-26_basic-application-limit.sql; keep the number there in sync.
 export const BASIC_MONTHLY_APPLICATIONS = 3
 
 // Monthly plan prices in USD, as shown to users. The amount actually charged comes from
 // the Stripe price (see stripePrices.ts); keep these in sync when prices change.
 export const CONTRACTOR_PRO_MONTHLY_USD = 19
 export const ORGANIZER_HUB_MONTHLY_USD = 149
+
+// Who gets which paid benefits. plan_tier values are written by the Stripe webhook.
+// Contractor Pro: priority placement in Find Talent and in organizers' applicant lists, Pro badge.
+// Organizer Hub: lower platform fee, advanced talent filters, bulk messaging.
+export const CONTRACTOR_PRO_TIERS = ['contractor'] as const
+export const ORGANIZER_HUB_TIERS = ['organizer', 'organizer_pro'] as const
+
+export function isContractorPro(planTier: string | null | undefined): boolean {
+  return !!planTier && (CONTRACTOR_PRO_TIERS as readonly string[]).includes(planTier)
+}
+
+export function isOrganizerHub(planTier: string | null | undefined): boolean {
+  return !!planTier && (ORGANIZER_HUB_TIERS as readonly string[]).includes(planTier)
+}

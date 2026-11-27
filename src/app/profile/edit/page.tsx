@@ -330,7 +330,7 @@ export default function EditProfilePage() {
               <div className="mt-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 flex justify-between items-center">
                 <div>
                   <p className="text-sm text-amber-900 font-bold">Want to show more of your work?</p>
-                  <p className="text-xs text-amber-700 mt-1">Upgrade to Premium to upload up to 10 portfolio images.</p>
+                  <p className="text-xs text-amber-700 mt-1">Upgrade to Contractor Pro to upload up to 10 portfolio images.</p>
                 </div>
                 <Link href="/pricing" className="text-sm bg-amber-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-amber-600 transition shadow-sm whitespace-nowrap ml-4">
                   Upgrade

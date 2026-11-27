@@ -18,7 +18,6 @@ export default function JobDetailsPage() {
   const [userRole, setUserRole] = useState<string | null>(null)
   
   // NEW: Store the user's SaaS tier
-  const [userTier, setUserTier] = useState<string>('basic')
   
   const [agreed, setAgreed] = useState(false)
    
@@ -57,16 +56,15 @@ export default function JobDetailsPage() {
     setJob(jobData)
 
     if (user) {
-      // 2. Fetch Profile (NOW INCLUDING plan_tier)
+      // 2. Fetch Profile
       const { data: profile } = await supabase
         .from('my_profile')
-        .select('role, accepted_tos_at, plan_tier')
+        .select('role, accepted_tos_at')
         .eq('id', user.id)
         .single()
        
       if (profile) {
         setUserRole(profile.role)
-        setUserTier(profile.plan_tier || 'basic') // <-- Store it in state
         if (profile.accepted_tos_at) setHasAcceptedTerms(true)
       }
 
@@ -138,43 +136,8 @@ export default function JobDetailsPage() {
       return
     }
 
-    // ==========================================
-    // SAAS LIMIT LOGIC (WITH INVITE EXEMPTION)
-    // ==========================================
-    if (userTier === 'basic') {
-      const toastId = toast.loading('Checking account limits...')
-      
-      // 1. Check if they were explicitly invited to this job
-      const { data: invite } = await supabase
-        .from('event_invitations')
-        .select('id')
-        .eq('job_id', jobId)
-        .eq('invitee_id', currentUser.id)
-        .maybeSingle()
-
-      // 2. If they have an invite, we SKIP the limit check entirely!
-      if (!invite) {
-        // They were NOT invited. Count their apps this month:
-        const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
-        
-        const { count } = await supabase
-          .from('applications')
-          .select('*', { count: 'exact', head: true })
-          .eq('applicant_id', currentUser.id)
-          .gte('created_at', startOfMonth)
-
-        if (count !== null && count >= BASIC_MONTHLY_APPLICATIONS) {
-          toast.dismiss(toastId)
-          toast.error(`You've used your ${BASIC_MONTHLY_APPLICATIONS} free applications this month. Upgrade to Contractor Pro for unlimited.`)
-          router.push('/pricing')
-          return
-        }
-      }
-      
-      toast.dismiss(toastId)
-    }
-    // ==========================================
-
+    // Basic plan monthly limit is enforced by the database (supabase/sql/2026-11-26_basic-application-limit.sql);
+    // invited jobs and Contractor Pro are exempt.
     const toastId = toast.loading('Sending application...')
     
     const { error } = await supabase.from('applications').insert({
@@ -184,7 +147,12 @@ export default function JobDetailsPage() {
     })
 
     if (error) {
-      toast.error(error.message, { id: toastId })
+      if (error.message?.includes('MONTHLY_APPLICATION_LIMIT')) {
+        toast.error(`You've used your ${BASIC_MONTHLY_APPLICATIONS} free applications this month. Upgrade to Contractor Pro for unlimited.`, { id: toastId })
+        router.push('/pricing')
+      } else {
+        toast.error(error.message, { id: toastId })
+      }
     } else {
       toast.success('Application Sent!', { id: toastId })
       setAppStatus('pending')
